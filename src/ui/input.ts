@@ -2,6 +2,7 @@ import * as P from '../sim/particles';
 import * as Hand from '../sim/godhand';
 import * as Cond from '../sim/conductors';
 import * as Diel from '../sim/dielectric';
+import * as Body from '../sim/chargedBody';
 import { canvas, canvasToGrid } from '../render/canvas';
 import { NX, NY, PARTICLE_MARGIN } from '../config';
 import { state as ui, type Shape } from './controls';
@@ -10,11 +11,14 @@ type ChargeProvider = () => number;
 
 const PICK_RADIUS = 4;
 
+export type PlacementKind = 'conductor' | 'dielectric' | 'body';
+
 export const placement = {
   active: false,
   shape: 'rect' as Shape,
-  material: 'conductor' as 'conductor' | 'dielectric',
+  material: 'conductor' as PlacementKind,
   epsR: 2,
+  charge: 0,
   anchor: { x: 0, y: 0 },
   current: { x: 0, y: 0 },
 };
@@ -22,27 +26,31 @@ export const placement = {
 function finalizePlacement(): void {
   const ax = placement.anchor.x, ay = placement.anchor.y;
   const bx = placement.current.x, by = placement.current.y;
-  const isCond = placement.material === 'conductor';
+  const kind = placement.material;
   const er = placement.epsR;
+  const Q = placement.charge;
   switch (placement.shape) {
     case 'disk': {
       const r = Math.hypot(bx - ax, by - ay);
       if (r < 0.5) break;
-      if (isCond) Cond.addDisk(ax, ay, r);
-      else Diel.addDisk(ax, ay, r, er);
+      if (kind === 'conductor') Cond.addDisk(ax, ay, r);
+      else if (kind === 'dielectric') Diel.addDisk(ax, ay, r, er);
+      else Body.addDisk(ax, ay, r, Q);
       break;
     }
     case 'annulus': {
       const rOuter = Math.hypot(bx - ax, by - ay);
       if (rOuter < 1) break;
-      if (isCond) Cond.addAnnulus(ax, ay, rOuter, rOuter * 0.5);
-      else Diel.addAnnulus(ax, ay, rOuter, rOuter * 0.5, er);
+      if (kind === 'conductor') Cond.addAnnulus(ax, ay, rOuter, rOuter * 0.5);
+      else if (kind === 'dielectric') Diel.addAnnulus(ax, ay, rOuter, rOuter * 0.5, er);
+      else Body.addAnnulus(ax, ay, rOuter, rOuter * 0.5, Q);
       break;
     }
     case 'rect': {
       if (Math.abs(bx - ax) < 0.5 || Math.abs(by - ay) < 0.5) break;
-      if (isCond) Cond.addRect(ax, ay, bx, by);
-      else Diel.addRect(ax, ay, bx, by, er);
+      if (kind === 'conductor') Cond.addRect(ax, ay, bx, by);
+      else if (kind === 'dielectric') Diel.addRect(ax, ay, bx, by, er);
+      else Body.addRect(ax, ay, bx, by, Q);
       break;
     }
   }
@@ -56,15 +64,18 @@ const TOGGLE_DRAG_THRESHOLD = 2.0; // grid cells
 let pendingToggleGroup = 0;
 const pendingDown = { x: 0, y: 0 };
 
-function isMaterialMode(): boolean {
-  return ui.mode === 'conductor' || ui.mode === 'dielectric';
+function isShapeMode(): boolean {
+  return ui.mode === 'conductor' || ui.mode === 'dielectric' || ui.mode === 'body';
 }
 
 function beginPlacement(anchorX: number, anchorY: number, currentX: number, currentY: number): void {
   placement.active = true;
   placement.shape = ui.shape;
-  placement.material = ui.mode === 'conductor' ? 'conductor' : 'dielectric';
+  placement.material =
+    ui.mode === 'conductor' ? 'conductor' :
+    ui.mode === 'dielectric' ? 'dielectric' : 'body';
   placement.epsR = ui.epsR;
+  placement.charge = ui.charge;
   placement.anchor = { x: anchorX, y: anchorY };
   placement.current = { x: currentX, y: currentY };
 }
@@ -83,9 +94,11 @@ export function setup(getCharge: ChargeProvider): void {
   };
 
   const eraseAt = (x: number, y: number): void => {
-    // Priority: particle > conductor > dielectric
+    // Priority: particle > body > conductor > dielectric
     const hit = P.findNearest(x, y, PICK_RADIUS);
     if (hit >= 0) { P.remove(hit); return; }
+    const bg = Body.getGroupAt(x, y);
+    if (bg > 0) { Body.removeGroup(bg); return; }
     const cg = Cond.getGroupAt(x, y);
     if (cg > 0) { Cond.removeGroup(cg); return; }
     const dg = Diel.getGroupAt(x, y);
@@ -114,6 +127,16 @@ export function setup(getCharge: ChargeProvider): void {
       }
     }
 
+    // Universal: click on existing charged body → drag (running) or consume
+    // the click (paused, to avoid placing a new body on top of it).
+    if (e.button === 0) {
+      const bg = Body.getGroupAt(rx, ry);
+      if (bg > 0) {
+        if (!ui.paused) Body.startDrag(bg, rx, ry);
+        return;
+      }
+    }
+
     // Universal: click on existing conductor → defer toggle
     if (e.button === 0) {
       const existingCond = Cond.getGroupAt(rx, ry);
@@ -125,8 +148,8 @@ export function setup(getCharge: ChargeProvider): void {
       }
     }
 
-    // Empty (or dielectric) cell: dispatch by mode
-    if (isMaterialMode() && e.button === 0) {
+    // Empty cell: dispatch by mode (shape modes drag-to-size)
+    if (isShapeMode() && e.button === 0) {
       beginPlacement(rx, ry, rx, ry);
       return;
     }
@@ -155,9 +178,9 @@ export function setup(getCharge: ChargeProvider): void {
       const dx = x - pendingDown.x;
       const dy = y - pendingDown.y;
       if (Math.hypot(dx, dy) > TOGGLE_DRAG_THRESHOLD) {
-        // Pointer moved significantly: cancel toggle. If in a material mode,
+        // Pointer moved significantly: cancel toggle. If in a shape mode,
         // promote to drag-to-place. Otherwise, no further action.
-        if (isMaterialMode()) {
+        if (isShapeMode()) {
           beginPlacement(pendingDown.x, pendingDown.y, x, y);
         }
         pendingToggleGroup = 0;
@@ -167,6 +190,11 @@ export function setup(getCharge: ChargeProvider): void {
     if (placement.active) {
       const { x, y } = eventToGrid(e, 0);
       placement.current = { x, y };
+      return;
+    }
+    if (Body.drag.groupId > 0) {
+      const { x, y } = eventToGrid(e, 0);
+      Body.updateTarget(x, y);
       return;
     }
     if (Hand.drag.idx < 0) return;
@@ -187,6 +215,7 @@ export function setup(getCharge: ChargeProvider): void {
       placement.active = false;
     }
     Hand.endDrag();
+    Body.endDrag();
   };
   canvas.addEventListener('pointerup', release);
   canvas.addEventListener('pointercancel', release);

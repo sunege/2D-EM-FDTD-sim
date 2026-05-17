@@ -146,6 +146,7 @@
       <div class="group">
         <label>モード</label>
         <button id="modeCharge" class="active">電荷</button>
+        <button id="modeBody">帯電体</button>
         <button id="modeConductor">導体</button>
         <button id="modeDielectric">誘電体</button>
         <button id="modeErase">削除</button>
@@ -181,9 +182,9 @@
         <canvas id="phi-canvas"></canvas>
       </div>
       <p class="hint">
-        既存への操作はモード非依存: 電荷クリック→ドラッグ移動 / 導体クリック→接地↔浮遊切替。
-        空白部はモードで配置: 電荷=クリック / 導体・誘電体=形状（矩形/円/ドーナツ）をドラッグでサイズ指定 / 削除=クリックで粒子・導体・誘電体を消去。
-        導体の色は σ で変化（茶=低σ → 灰=高σ）、接地導体には ⏚ の回路記号。誘電体は青tint。
+        既存への操作はモード非依存: 電荷/帯電体クリック→ドラッグ移動 / 導体クリック→接地↔浮遊切替。
+        空白部はモードで配置: 電荷=クリック / 帯電体・導体・誘電体=形状（矩形/円/ドーナツ）をドラッグでサイズ指定 / 削除=クリックで対象を消去。
+        帯電体は総電気量を一様分布させた剛体（赤=正, 青=負）。導体の色は σ（茶=低σ → 灰=高σ）、接地導体には ⏚ の回路記号。誘電体は青tint。
         Space: 一時停止 / R: 全リセット
       </p>
     </div>

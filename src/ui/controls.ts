@@ -2,7 +2,7 @@ import * as Highpass from '../render/highpass';
 import * as Cond from '../sim/conductors';
 import { SIGMA_CONDUCTOR_DEFAULT, EPS_R_DEFAULT } from '../config';
 
-export type Mode = 'charge' | 'conductor' | 'dielectric' | 'erase';
+export type Mode = 'charge' | 'body' | 'conductor' | 'dielectric' | 'erase';
 export type Shape = 'rect' | 'disk' | 'annulus';
 
 export const state = {
@@ -87,6 +87,7 @@ export function setup(onReset: ResetHandler): void {
 
   const modeBtns: Record<Mode, HTMLButtonElement> = {
     charge: document.getElementById('modeCharge') as HTMLButtonElement,
+    body: document.getElementById('modeBody') as HTMLButtonElement,
     conductor: document.getElementById('modeConductor') as HTMLButtonElement,
     dielectric: document.getElementById('modeDielectric') as HTMLButtonElement,
     erase: document.getElementById('modeErase') as HTMLButtonElement,
@@ -103,8 +104,9 @@ export function setup(onReset: ResetHandler): void {
   const epsrVal = document.getElementById('epsrVal') as HTMLSpanElement;
 
   const refreshModeAffordances = (): void => {
-    // Shape sub-mode only meaningful when placing a material.
-    const shapeNeeded = state.mode === 'conductor' || state.mode === 'dielectric';
+    // Shape sub-mode is meaningful when placing a material or a charged body.
+    const shapeNeeded =
+      state.mode === 'conductor' || state.mode === 'dielectric' || state.mode === 'body';
     (Object.keys(shapeBtns) as Shape[]).forEach((k) => {
       shapeBtns[k].disabled = !shapeNeeded;
     });

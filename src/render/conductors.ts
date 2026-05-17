@@ -107,6 +107,7 @@ function drawGroundSymbol(cx: number, cy: number, s: number): void {
 
 export function drawPreview(): void {
   if (!placement.active) return;
+  if (placement.material !== 'conductor' && placement.material !== 'dielectric') return;
   const ax = placement.anchor.x * PIXEL_SCALE;
   const ay = placement.anchor.y * PIXEL_SCALE;
   const bx = placement.current.x * PIXEL_SCALE;

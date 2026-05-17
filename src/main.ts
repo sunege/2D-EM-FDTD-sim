@@ -5,6 +5,7 @@ import * as FDTD from './sim/fdtd';
 import * as Particles from './sim/particles';
 import * as Conductors from './sim/conductors';
 import * as Dielectric from './sim/dielectric';
+import * as Body from './sim/chargedBody';
 
 import * as Heatmap from './render/heatmap';
 import * as Vectors from './render/vectors';
@@ -13,6 +14,7 @@ import * as Highpass from './render/highpass';
 import * as Phi3D from './render/phi3d';
 import * as ConductorsR from './render/conductors';
 import * as DielectricR from './render/dielectric';
+import * as BodyR from './render/chargedBody';
 
 import { setup as setupInput } from './ui/input';
 import { setup as setupControls, state as ui } from './ui/controls';
@@ -44,6 +46,7 @@ function reset(): void {
   Particles.clear();
   Conductors.clear();
   Dielectric.clear();
+  Body.clear();
   Poisson.reset();
   FDTD.reset();
   Highpass.reset();
@@ -70,7 +73,9 @@ let accumulator = 0;
 
 function simStep(): void {
   Hand.step();
+  Body.step();
   Deposition.compute();
+  Body.deposit();
   Poisson.solve();
   FDTD.step();
   Highpass.update();
@@ -98,9 +103,11 @@ function frame(): void {
     }
     DielectricR.draw();
     ConductorsR.draw();
+    BodyR.draw();
     Vectors.draw(ui.showStatic, ui.showWave);
     ParticlesR.draw();
     ConductorsR.drawPreview();
+    BodyR.drawPreview();
   }
 
   requestAnimationFrame(frame);
