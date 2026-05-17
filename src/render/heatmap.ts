@@ -14,14 +14,14 @@ export function draw(): void {
       let r: number, g: number, b: number;
       if (c >= 0) {
         const t = c;
-        r = 20 + 235 * t;
-        g = 20 + 60 * (1 - t);
-        b = 60 * (1 - t);
+        r = 255;
+        g = 255 * (1 - t);
+        b = 255 * (1 - t);
       } else {
         const t = -c;
-        b = 40 + 215 * t;
-        g = 20 + 80 * (1 - t);
-        r = 30 * (1 - t);
+        r = 255 * (1 - t);
+        g = 255 * (1 - t);
+        b = 255;
       }
       const px = (j * NX + i) * 4;
       data[px] = r;
@@ -35,6 +35,6 @@ export function draw(): void {
 }
 
 export function drawBlank(): void {
-  ctx.fillStyle = '#000';
+  ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 }

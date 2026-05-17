@@ -28,9 +28,12 @@ export function draw(includeStatic: boolean, includeWave: boolean): void {
   const fieldScale = ARROW_MAX_PX / maxMag;
 
   ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,0.80)';
-  ctx.lineWidth = 1.8;
   ctx.beginPath();
+
+  const cosP = Math.cos(HEAD_ANGLE);
+  const sinP = Math.sin(HEAD_ANGLE);
+  const cosN = cosP;
+  const sinN = -sinP;
 
   for (let j = half; j < NY; j += VECTOR_STRIDE) {
     for (let i = half; i < NX; i += VECTOR_STRIDE) {
@@ -49,15 +52,8 @@ export function draw(includeStatic: boolean, includeWave: boolean): void {
       const bx = ax + ux * len;
       const by = ay + uy * len;
 
-      // shaft
       ctx.moveTo(ax, ay);
       ctx.lineTo(bx, by);
-
-      // arrowhead: two lines from tip
-      const cosP = Math.cos(HEAD_ANGLE);
-      const sinP = Math.sin(HEAD_ANGLE);
-      const cosN = cosP;
-      const sinN = -sinP;
       ctx.moveTo(bx, by);
       ctx.lineTo(bx - HEAD_PX * (ux * cosP - uy * sinP), by - HEAD_PX * (uy * cosP + ux * sinP));
       ctx.moveTo(bx, by);
@@ -65,6 +61,15 @@ export function draw(includeStatic: boolean, includeWave: boolean): void {
     }
   }
 
+  // white outline pass
+  ctx.lineWidth = 3.5;
+  ctx.strokeStyle = 'rgba(255,255,255,0.90)';
   ctx.stroke();
+
+  // black arrow pass
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+  ctx.stroke();
+
   ctx.restore();
 }
