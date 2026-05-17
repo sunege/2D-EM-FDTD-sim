@@ -129,6 +129,20 @@
       </div>
       <div class="sep"></div>
       <div class="group">
+        <label>ツール</label>
+        <button id="toolCharge" class="active">電荷</button>
+        <button id="toolDisk">円盤</button>
+        <button id="toolAnnulus">ドーナツ</button>
+        <button id="toolRect">矩形</button>
+      </div>
+      <div class="sep"></div>
+      <div class="group">
+        <label for="sigma">σ</label>
+        <input type="range" id="sigma" min="0.05" max="5" step="0.05" value="0.5" />
+        <span id="sigmaVal">0.50</span>
+      </div>
+      <div class="sep"></div>
+      <div class="group">
         <button id="phi3dBtn">電位 3D</button>
         <button id="phi3dResetBtn" style="display:none">ビューリセット</button>
       </div>
@@ -139,7 +153,9 @@
         <canvas id="phi-canvas"></canvas>
       </div>
       <p class="hint">
-        左クリックで電荷配置 / 右クリックで逆符号配置。再生中は既存の電荷をドラッグで移動（急加速で放射波）。一時停止中は重ねて配置可。Space: 一時停止 / R: リセット
+        電荷モード: 左クリックで配置 / 右クリックで逆符号 / ドラッグで移動（急加速で放射波）。
+        導体モード（円盤・ドーナツ・矩形）: 空白部からドラッグでサイズ指定。既存導体をクリックすると 接地↔浮遊 切替（青灰=接地, 茶=浮遊）。σ で導電率を調整。
+        Space: 一時停止 / R: リセット
       </p>
     </div>
     <script type="module" src="/src/main.ts"></script>

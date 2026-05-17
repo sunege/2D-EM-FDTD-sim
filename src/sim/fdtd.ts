@@ -1,6 +1,7 @@
-import { NX, NY, DX, DY, DT, C } from '../config';
+import { NX, NY, DX, DY, DT, C, EPS0 } from '../config';
 import { idx, makeField } from './grid';
 import { Jx, Jy } from './deposition';
+import { mask as condMask, getSigma } from './conductors';
 
 export const Ex = makeField();
 export const Ey = makeField();
@@ -18,6 +19,15 @@ const EyPrevRightInner = new Float32Array(NY);
 const alpha = (C * DT - DX) / (C * DT + DX);
 
 export function step(): void {
+  // Lossy update coefficients for cells inside conductors.
+  // Semi-implicit (Crank-Nicolson on σE) Maxwell-Ampere with ε₀ = EPS0:
+  //   E^{n+1} = ca * E^n + cbDt * (∇×B/μ - J_source)
+  // ca → 1 and cbDt → DT as σ → 0 (recovers standard FDTD).
+  const sigma = getSigma();
+  const x = sigma * DT / (2 * EPS0);
+  const ca = (1 - x) / (1 + x);
+  const cbDt = DT / (1 + x);
+
   for (let i = 0; i < NX; i++) {
     ExPrevTop[i] = Ex[idx(i, 0)];
     ExPrevTopInner[i] = Ex[idx(i, 1)];
@@ -34,13 +44,23 @@ export function step(): void {
   for (let j = 1; j < NY - 1; j++) {
     for (let i = 0; i < NX; i++) {
       const k = idx(i, j);
-      Ex[k] += DT * (C * (Bz[k] - Bz[k - NX]) / DY - Jx[k]);
+      const curl = C * (Bz[k] - Bz[k - NX]) / DY - Jx[k];
+      if (condMask[k]) {
+        Ex[k] = ca * Ex[k] + cbDt * curl;
+      } else {
+        Ex[k] += DT * curl;
+      }
     }
   }
   for (let j = 0; j < NY; j++) {
     for (let i = 1; i < NX - 1; i++) {
       const k = idx(i, j);
-      Ey[k] += DT * (-C * (Bz[k] - Bz[k - 1]) / DX - Jy[k]);
+      const curl = -C * (Bz[k] - Bz[k - 1]) / DX - Jy[k];
+      if (condMask[k]) {
+        Ey[k] = ca * Ey[k] + cbDt * curl;
+      } else {
+        Ey[k] += DT * curl;
+      }
     }
   }
 

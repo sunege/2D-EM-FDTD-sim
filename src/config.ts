@@ -30,3 +30,7 @@ export const BZ_SCALE = 0.05;
 export const BZ_THRESHOLD = 0.005;
 
 export const HIGHPASS_ALPHA = 0.02;
+
+export const SIGMA_CONDUCTOR_DEFAULT = 0.5;
+export const SIGMA_CONDUCTOR_MIN = 0.05;
+export const SIGMA_CONDUCTOR_MAX = 5.0;

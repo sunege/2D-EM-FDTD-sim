@@ -1,4 +1,8 @@
 import * as Highpass from '../render/highpass';
+import * as Cond from '../sim/conductors';
+import { SIGMA_CONDUCTOR_DEFAULT } from '../config';
+
+export type Tool = 'charge' | 'disk' | 'annulus' | 'rect';
 
 export const state = {
   charge: 5,
@@ -7,6 +11,8 @@ export const state = {
   showWave: true,
   highpass: true,
   simSpeed: 1,
+  tool: 'charge' as Tool,
+  sigma: SIGMA_CONDUCTOR_DEFAULT,
 };
 
 type ResetHandler = () => void;
@@ -75,4 +81,32 @@ export function setup(onReset: ResetHandler): void {
     state.simSpeed = parseFloat(speedEl.value);
     updateSpeedLabel();
   });
+
+  const toolBtns: Record<Tool, HTMLButtonElement> = {
+    charge: document.getElementById('toolCharge') as HTMLButtonElement,
+    disk: document.getElementById('toolDisk') as HTMLButtonElement,
+    annulus: document.getElementById('toolAnnulus') as HTMLButtonElement,
+    rect: document.getElementById('toolRect') as HTMLButtonElement,
+  };
+  const setTool = (t: Tool): void => {
+    state.tool = t;
+    (Object.keys(toolBtns) as Tool[]).forEach((k) => {
+      toolBtns[k].classList.toggle('active', k === t);
+    });
+  };
+  (Object.keys(toolBtns) as Tool[]).forEach((t) => {
+    toolBtns[t].addEventListener('click', () => setTool(t));
+  });
+
+  const sigmaEl = document.getElementById('sigma') as HTMLInputElement;
+  const sigmaVal = document.getElementById('sigmaVal') as HTMLSpanElement;
+  const updateSigma = (): void => {
+    const v = parseFloat(sigmaEl.value);
+    state.sigma = v;
+    sigmaVal.textContent = v.toFixed(2);
+    Cond.setSigma(v);
+  };
+  sigmaEl.value = String(SIGMA_CONDUCTOR_DEFAULT);
+  updateSigma();
+  sigmaEl.addEventListener('input', updateSigma);
 }
