@@ -1,27 +1,30 @@
-import { NX, NY, SIGMA_CONDUCTOR_DEFAULT } from '../config';
+import { NX, NY, EPS_R_MIN, EPS_R_MAX } from '../config';
 import { N_CELLS, idx } from './grid';
 
-// Per-cell
-export const mask = new Uint8Array(N_CELLS);
-export const groupId = new Int16Array(N_CELLS); // 0 = not a conductor; >0 = group index
+// Per-cell relative permittivity ε_r. Vacuum = 1.0.
+export const eps = new Float32Array(N_CELLS);
+eps.fill(1.0);
 
-// Per-group state. Index 0 reserved (means "no group").
+// Per-cell group ID for shape identity (0 = no dielectric).
+export const groupId = new Int16Array(N_CELLS);
+
 export const MAX_GROUPS = 256;
-const groupInUse = new Uint8Array(MAX_GROUPS); // slot allocation flag
-export const groupGrounded = new Uint8Array(MAX_GROUPS); // 1 = fixed V, 0 = floating
-export const groupVoltage = new Float32Array(MAX_GROUPS); // grounded: target V; floating: latest avg
+const groupInUse = new Uint8Array(MAX_GROUPS);
 
-let sigma = SIGMA_CONDUCTOR_DEFAULT;
+// Bumped whenever `eps` changes (placement/remove/clear). Consumers cache
+// derived quantities (e.g. Poisson face-ε / 1/Σε) and rebuild on mismatch.
+let version = 0;
+function bump(): void { version++; }
+export function getVersion(): number { return version; }
 
-export function setSigma(s: number): void { sigma = s; }
-export function getSigma(): number { return sigma; }
+function clampEr(v: number): number {
+  return Math.max(EPS_R_MIN, Math.min(EPS_R_MAX, v));
+}
 
 function allocGroup(): number {
   for (let g = 1; g < MAX_GROUPS; g++) {
     if (!groupInUse[g]) {
       groupInUse[g] = 1;
-      groupGrounded[g] = 1;
-      groupVoltage[g] = 0;
       return g;
     }
   }
@@ -29,24 +32,28 @@ function allocGroup(): number {
 }
 
 export function clear(): void {
-  mask.fill(0);
+  eps.fill(1.0);
   groupId.fill(0);
   groupInUse.fill(0);
-  groupGrounded.fill(0);
-  groupVoltage.fill(0);
+  bump();
 }
 
 export function removeGroup(g: number): void {
   if (g <= 0 || g >= MAX_GROUPS || !groupInUse[g]) return;
   for (let k = 0; k < N_CELLS; k++) {
     if (groupId[k] === g) {
-      mask[k] = 0;
+      eps[k] = 1.0;
       groupId[k] = 0;
     }
   }
   groupInUse[g] = 0;
-  groupGrounded[g] = 0;
-  groupVoltage[g] = 0;
+  bump();
+}
+
+export function getGroupAt(x: number, y: number): number {
+  const i = Math.floor(x), j = Math.floor(y);
+  if (i < 0 || i >= NX || j < 0 || j >= NY) return 0;
+  return groupId[idx(i, j)];
 }
 
 function findExistingGroupDisk(cx: number, cy: number, r2: number, i0: number, i1: number, j0: number, j1: number): number {
@@ -88,7 +95,8 @@ function findExistingGroupRect(i0: number, i1: number, j0: number, j1: number): 
   return 0;
 }
 
-export function addDisk(cx: number, cy: number, r: number): number {
+export function addDisk(cx: number, cy: number, r: number, value: number): number {
+  const e = clampEr(value);
   const r2 = r * r;
   const i0 = Math.max(0, Math.floor(cx - r));
   const i1 = Math.min(NX - 1, Math.ceil(cx + r));
@@ -105,15 +113,17 @@ export function addDisk(cx: number, cy: number, r: number): number {
       const dx = i + 0.5 - cx;
       if (dx * dx + dy * dy <= r2) {
         const k = idx(i, j);
-        mask[k] = 1;
+        eps[k] = e;
         groupId[k] = g;
       }
     }
   }
+  bump();
   return g;
 }
 
-export function addAnnulus(cx: number, cy: number, rOuter: number, rInner: number): number {
+export function addAnnulus(cx: number, cy: number, rOuter: number, rInner: number, value: number): number {
+  const e = clampEr(value);
   const ro2 = rOuter * rOuter;
   const ri2 = rInner * rInner;
   const i0 = Math.max(0, Math.floor(cx - rOuter));
@@ -132,15 +142,17 @@ export function addAnnulus(cx: number, cy: number, rOuter: number, rInner: numbe
       const d2 = dx * dx + dy * dy;
       if (d2 <= ro2 && d2 >= ri2) {
         const k = idx(i, j);
-        mask[k] = 1;
+        eps[k] = e;
         groupId[k] = g;
       }
     }
   }
+  bump();
   return g;
 }
 
-export function addRect(x1: number, y1: number, x2: number, y2: number): number {
+export function addRect(x1: number, y1: number, x2: number, y2: number, value: number): number {
+  const e = clampEr(value);
   const xa = Math.min(x1, x2), xb = Math.max(x1, x2);
   const ya = Math.min(y1, y2), yb = Math.max(y1, y2);
   const i0 = Math.max(0, Math.floor(xa));
@@ -155,29 +167,10 @@ export function addRect(x1: number, y1: number, x2: number, y2: number): number 
   for (let j = j0; j <= j1; j++) {
     for (let i = i0; i <= i1; i++) {
       const k = idx(i, j);
-      mask[k] = 1;
+      eps[k] = e;
       groupId[k] = g;
     }
   }
+  bump();
   return g;
-}
-
-export function getGroupAt(x: number, y: number): number {
-  const i = Math.floor(x), j = Math.floor(y);
-  if (i < 0 || i >= NX || j < 0 || j >= NY) return 0;
-  return groupId[idx(i, j)];
-}
-
-export function toggleGrounded(g: number): void {
-  if (g <= 0 || g >= MAX_GROUPS || !groupInUse[g]) return;
-  if (groupGrounded[g]) {
-    groupGrounded[g] = 0; // → floating; voltage will be relaxed by Poisson
-  } else {
-    groupGrounded[g] = 1; // → fixed
-    groupVoltage[g] = 0;
-  }
-}
-
-export function isGrounded(g: number): boolean {
-  return g > 0 && groupGrounded[g] === 1;
 }

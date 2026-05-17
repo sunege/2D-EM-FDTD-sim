@@ -1,8 +1,9 @@
 import * as Highpass from '../render/highpass';
 import * as Cond from '../sim/conductors';
-import { SIGMA_CONDUCTOR_DEFAULT } from '../config';
+import { SIGMA_CONDUCTOR_DEFAULT, EPS_R_DEFAULT } from '../config';
 
-export type Tool = 'charge' | 'disk' | 'annulus' | 'rect';
+export type Mode = 'charge' | 'conductor' | 'dielectric' | 'erase';
+export type Shape = 'rect' | 'disk' | 'annulus';
 
 export const state = {
   charge: 5,
@@ -11,8 +12,10 @@ export const state = {
   showWave: true,
   highpass: true,
   simSpeed: 1,
-  tool: 'charge' as Tool,
+  mode: 'charge' as Mode,
+  shape: 'rect' as Shape,
   sigma: SIGMA_CONDUCTOR_DEFAULT,
+  epsR: EPS_R_DEFAULT,
 };
 
 type ResetHandler = () => void;
@@ -82,24 +85,54 @@ export function setup(onReset: ResetHandler): void {
     updateSpeedLabel();
   });
 
-  const toolBtns: Record<Tool, HTMLButtonElement> = {
-    charge: document.getElementById('toolCharge') as HTMLButtonElement,
-    disk: document.getElementById('toolDisk') as HTMLButtonElement,
-    annulus: document.getElementById('toolAnnulus') as HTMLButtonElement,
-    rect: document.getElementById('toolRect') as HTMLButtonElement,
+  const modeBtns: Record<Mode, HTMLButtonElement> = {
+    charge: document.getElementById('modeCharge') as HTMLButtonElement,
+    conductor: document.getElementById('modeConductor') as HTMLButtonElement,
+    dielectric: document.getElementById('modeDielectric') as HTMLButtonElement,
+    erase: document.getElementById('modeErase') as HTMLButtonElement,
   };
-  const setTool = (t: Tool): void => {
-    state.tool = t;
-    (Object.keys(toolBtns) as Tool[]).forEach((k) => {
-      toolBtns[k].classList.toggle('active', k === t);
-    });
+  const shapeBtns: Record<Shape, HTMLButtonElement> = {
+    rect: document.getElementById('shapeRect') as HTMLButtonElement,
+    disk: document.getElementById('shapeDisk') as HTMLButtonElement,
+    annulus: document.getElementById('shapeAnnulus') as HTMLButtonElement,
   };
-  (Object.keys(toolBtns) as Tool[]).forEach((t) => {
-    toolBtns[t].addEventListener('click', () => setTool(t));
-  });
 
   const sigmaEl = document.getElementById('sigma') as HTMLInputElement;
   const sigmaVal = document.getElementById('sigmaVal') as HTMLSpanElement;
+  const epsrEl = document.getElementById('epsr') as HTMLInputElement;
+  const epsrVal = document.getElementById('epsrVal') as HTMLSpanElement;
+
+  const refreshModeAffordances = (): void => {
+    // Shape sub-mode only meaningful when placing a material.
+    const shapeNeeded = state.mode === 'conductor' || state.mode === 'dielectric';
+    (Object.keys(shapeBtns) as Shape[]).forEach((k) => {
+      shapeBtns[k].disabled = !shapeNeeded;
+    });
+    sigmaEl.disabled = state.mode !== 'conductor';
+    epsrEl.disabled = state.mode !== 'dielectric';
+  };
+
+  const setMode = (m: Mode): void => {
+    state.mode = m;
+    (Object.keys(modeBtns) as Mode[]).forEach((k) => {
+      modeBtns[k].classList.toggle('active', k === m);
+    });
+    refreshModeAffordances();
+  };
+  (Object.keys(modeBtns) as Mode[]).forEach((m) => {
+    modeBtns[m].addEventListener('click', () => setMode(m));
+  });
+
+  const setShape = (s: Shape): void => {
+    state.shape = s;
+    (Object.keys(shapeBtns) as Shape[]).forEach((k) => {
+      shapeBtns[k].classList.toggle('active', k === s);
+    });
+  };
+  (Object.keys(shapeBtns) as Shape[]).forEach((s) => {
+    shapeBtns[s].addEventListener('click', () => setShape(s));
+  });
+
   const updateSigma = (): void => {
     const v = parseFloat(sigmaEl.value);
     state.sigma = v;
@@ -109,4 +142,15 @@ export function setup(onReset: ResetHandler): void {
   sigmaEl.value = String(SIGMA_CONDUCTOR_DEFAULT);
   updateSigma();
   sigmaEl.addEventListener('input', updateSigma);
+
+  const updateEpsr = (): void => {
+    const v = parseFloat(epsrEl.value);
+    state.epsR = v;
+    epsrVal.textContent = v.toFixed(1);
+  };
+  epsrEl.value = String(EPS_R_DEFAULT);
+  updateEpsr();
+  epsrEl.addEventListener('input', updateEpsr);
+
+  refreshModeAffordances();
 }

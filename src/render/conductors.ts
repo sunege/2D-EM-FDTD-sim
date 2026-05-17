@@ -1,5 +1,5 @@
-import { NX, NY, CANVAS_W, CANVAS_H, PIXEL_SCALE } from '../config';
-import { mask, groupId, groupGrounded } from '../sim/conductors';
+import { NX, NY, CANVAS_W, CANVAS_H, PIXEL_SCALE, SIGMA_CONDUCTOR_MIN, SIGMA_CONDUCTOR_MAX } from '../config';
+import { mask, groupId, groupGrounded, getSigma, MAX_GROUPS } from '../sim/conductors';
 import { ctx } from './canvas';
 import { placement } from '../ui/input';
 
@@ -9,31 +9,100 @@ overlay.height = NY;
 const overlayCtx = overlay.getContext('2d') as CanvasRenderingContext2D;
 const overlayData = overlayCtx.createImageData(NX, NY);
 
+const LOG_SIGMA_MIN = Math.log(SIGMA_CONDUCTOR_MIN);
+const LOG_SIGMA_SPAN = Math.log(SIGMA_CONDUCTOR_MAX) - LOG_SIGMA_MIN;
+
+// Color encodes σ on a log scale: low σ → warm brown, high σ → cool gray.
+function sigmaColor(sigma: number): [number, number, number] {
+  const t = (Math.log(sigma) - LOG_SIGMA_MIN) / LOG_SIGMA_SPAN;
+  const tc = Math.max(0, Math.min(1, t));
+  const r = 180 + tc * (95 - 180);
+  const g = 130 + tc * (100 - 130);
+  const b = 75 + tc * (110 - 75);
+  return [r, g, b];
+}
+
+// Scratch buffers for per-group centroid accumulation.
+const sumXBuf = new Float32Array(MAX_GROUPS);
+const sumYBuf = new Float32Array(MAX_GROUPS);
+const countBuf = new Int32Array(MAX_GROUPS);
+
 export function draw(): void {
+  const [cr, cg, cb] = sigmaColor(getSigma());
   const data = overlayData.data;
   for (let k = 0; k < NX * NY; k++) {
     const p = k * 4;
     if (mask[k]) {
-      const g = groupId[k];
-      if (groupGrounded[g]) {
-        // grounded: cool blue-gray
-        data[p] = 85;
-        data[p + 1] = 100;
-        data[p + 2] = 130;
-        data[p + 3] = 215;
-      } else {
-        // floating: warm tan
-        data[p] = 170;
-        data[p + 1] = 130;
-        data[p + 2] = 75;
-        data[p + 3] = 215;
-      }
+      data[p] = cr;
+      data[p + 1] = cg;
+      data[p + 2] = cb;
+      data[p + 3] = 215;
     } else {
       data[p + 3] = 0;
     }
   }
   overlayCtx.putImageData(overlayData, 0, 0);
   ctx.drawImage(overlay, 0, 0, CANVAS_W, CANVAS_H);
+
+  drawGroundSymbols();
+}
+
+function drawGroundSymbols(): void {
+  sumXBuf.fill(0);
+  sumYBuf.fill(0);
+  countBuf.fill(0);
+
+  for (let j = 0; j < NY; j++) {
+    for (let i = 0; i < NX; i++) {
+      const k = j * NX + i;
+      const g = groupId[k];
+      if (g > 0 && groupGrounded[g]) {
+        sumXBuf[g] += i;
+        sumYBuf[g] += j;
+        countBuf[g] += 1;
+      }
+    }
+  }
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(15,15,25,0.95)';
+  ctx.lineCap = 'round';
+
+  for (let g = 1; g < MAX_GROUPS; g++) {
+    if (!groupGrounded[g] || countBuf[g] === 0) continue;
+    const cxGrid = sumXBuf[g] / countBuf[g] + 0.5;
+    const cyGrid = sumYBuf[g] / countBuf[g] + 0.5;
+    // Symbol size scales with √(cell count), clamped to a usable range.
+    const sizeGrid = Math.max(2.0, Math.min(4.5, Math.sqrt(countBuf[g]) * 0.4));
+    drawGroundSymbol(cxGrid * PIXEL_SCALE, cyGrid * PIXEL_SCALE, sizeGrid * PIXEL_SCALE);
+  }
+
+  ctx.restore();
+}
+
+// Earth ground (IEC 60417-5017): vertical stem + three horizontal bars of
+// decreasing width.
+function drawGroundSymbol(cx: number, cy: number, s: number): void {
+  const stemLen = s * 0.55;
+  const w1 = s;
+  const w2 = s * 0.62;
+  const w3 = s * 0.25;
+  const lineGap = s * 0.22;
+  const totalH = stemLen + 2 * lineGap;
+  const topY = cy - totalH / 2;
+  const stemBottomY = topY + stemLen;
+
+  ctx.lineWidth = Math.max(1.4, s * 0.12);
+  ctx.beginPath();
+  ctx.moveTo(cx, topY);
+  ctx.lineTo(cx, stemBottomY);
+  ctx.moveTo(cx - w1, stemBottomY);
+  ctx.lineTo(cx + w1, stemBottomY);
+  ctx.moveTo(cx - w2, stemBottomY + lineGap);
+  ctx.lineTo(cx + w2, stemBottomY + lineGap);
+  ctx.moveTo(cx - w3, stemBottomY + 2 * lineGap);
+  ctx.lineTo(cx + w3, stemBottomY + 2 * lineGap);
+  ctx.stroke();
 }
 
 export function drawPreview(): void {
@@ -44,18 +113,24 @@ export function drawPreview(): void {
   const by = placement.current.y * PIXEL_SCALE;
 
   ctx.save();
-  ctx.strokeStyle = 'rgba(40,50,70,0.85)';
-  ctx.fillStyle = 'rgba(90,95,105,0.30)';
+  if (placement.material === 'dielectric') {
+    ctx.strokeStyle = 'rgba(40,90,180,0.85)';
+    ctx.fillStyle = 'rgba(60,130,230,0.20)';
+  } else {
+    const [r, g, b] = sigmaColor(getSigma());
+    ctx.strokeStyle = `rgba(${(r * 0.5) | 0},${(g * 0.5) | 0},${(b * 0.5) | 0},0.85)`;
+    ctx.fillStyle = `rgba(${r | 0},${g | 0},${b | 0},0.35)`;
+  }
   ctx.lineWidth = 1.5;
   ctx.setLineDash([6, 4]);
 
-  if (placement.tool === 'disk') {
+  if (placement.shape === 'disk') {
     const r = Math.hypot(bx - ax, by - ay);
     ctx.beginPath();
     ctx.arc(ax, ay, r, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
-  } else if (placement.tool === 'annulus') {
+  } else if (placement.shape === 'annulus') {
     const rOuter = Math.hypot(bx - ax, by - ay);
     const rInner = rOuter * 0.5;
     ctx.beginPath();
@@ -64,7 +139,7 @@ export function drawPreview(): void {
     ctx.beginPath();
     ctx.arc(ax, ay, rInner, 0, Math.PI * 2);
     ctx.stroke();
-  } else if (placement.tool === 'rect') {
+  } else if (placement.shape === 'rect') {
     const x0 = Math.min(ax, bx);
     const y0 = Math.min(ay, by);
     const w = Math.abs(bx - ax);
