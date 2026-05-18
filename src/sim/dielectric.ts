@@ -38,6 +38,32 @@ export function clear(): void {
   bump();
 }
 
+export function isInUse(g: number): boolean {
+  return g > 0 && g < MAX_GROUPS && groupInUse[g] === 1;
+}
+
+// Update ε_r for every cell of group g and bump the version so Poisson's
+// coefficient cache rebuilds on the next solve. Value is clamped to the
+// allowed range.
+export function setGroupEpsilon(g: number, value: number): void {
+  if (!isInUse(g)) return;
+  const e = clampEr(value);
+  for (let k = 0; k < N_CELLS; k++) {
+    if (groupId[k] === g) eps[k] = e;
+  }
+  bump();
+}
+
+// Read back any one cell's ε_r as a representative of the group. Returns 1.0
+// if the group has no cells (which shouldn't happen for in-use groups).
+export function getGroupEpsilon(g: number): number {
+  if (!isInUse(g)) return 1.0;
+  for (let k = 0; k < N_CELLS; k++) {
+    if (groupId[k] === g) return eps[k];
+  }
+  return 1.0;
+}
+
 export function removeGroup(g: number): void {
   if (g <= 0 || g >= MAX_GROUPS || !groupInUse[g]) return;
   for (let k = 0; k < N_CELLS; k++) {

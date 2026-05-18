@@ -10,11 +10,24 @@ export const MAX_GROUPS = 256;
 const groupInUse = new Uint8Array(MAX_GROUPS); // slot allocation flag
 export const groupGrounded = new Uint8Array(MAX_GROUPS); // 1 = fixed V, 0 = floating
 export const groupVoltage = new Float32Array(MAX_GROUPS); // grounded: target V; floating: latest avg
+// Per-group conductivity. Snapshot from `sigmaDefault` at allocGroup time so
+// editing the global σ slider afterwards only affects new placements, not
+// existing groups. FDTD reads this via Cond.groupSigma[Cond.groupId[k]].
+export const groupSigma = new Float32Array(MAX_GROUPS);
 
-let sigma = SIGMA_CONDUCTOR_DEFAULT;
+let sigmaDefault = SIGMA_CONDUCTOR_DEFAULT;
 
-export function setSigma(s: number): void { sigma = s; }
-export function getSigma(): number { return sigma; }
+export function setSigma(s: number): void { sigmaDefault = s; }
+export function getSigma(): number { return sigmaDefault; }
+
+export function setGroupSigma(g: number, s: number): void {
+  if (g <= 0 || g >= MAX_GROUPS || !groupInUse[g]) return;
+  groupSigma[g] = s;
+}
+export function getGroupSigma(g: number): number {
+  if (g <= 0 || g >= MAX_GROUPS) return 0;
+  return groupSigma[g];
+}
 
 function allocGroup(): number {
   for (let g = 1; g < MAX_GROUPS; g++) {
@@ -22,6 +35,7 @@ function allocGroup(): number {
       groupInUse[g] = 1;
       groupGrounded[g] = 1;
       groupVoltage[g] = 0;
+      groupSigma[g] = sigmaDefault;
       return g;
     }
   }
@@ -34,6 +48,7 @@ export function clear(): void {
   groupInUse.fill(0);
   groupGrounded.fill(0);
   groupVoltage.fill(0);
+  groupSigma.fill(0);
 }
 
 export function removeGroup(g: number): void {
@@ -47,6 +62,11 @@ export function removeGroup(g: number): void {
   groupInUse[g] = 0;
   groupGrounded[g] = 0;
   groupVoltage[g] = 0;
+  groupSigma[g] = 0;
+}
+
+export function isInUse(g: number): boolean {
+  return g > 0 && g < MAX_GROUPS && groupInUse[g] === 1;
 }
 
 function findExistingGroupDisk(cx: number, cy: number, r2: number, i0: number, i1: number, j0: number, j1: number): number {

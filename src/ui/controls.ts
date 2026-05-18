@@ -2,7 +2,7 @@ import * as Highpass from '../render/highpass';
 import * as Cond from '../sim/conductors';
 import { SIGMA_CONDUCTOR_DEFAULT, EPS_R_DEFAULT } from '../config';
 
-export type Mode = 'charge' | 'body' | 'conductor' | 'dielectric' | 'erase';
+export type Mode = 'charge' | 'body' | 'conductor' | 'dielectric' | 'probe' | 'erase';
 export type Shape = 'rect' | 'disk' | 'annulus';
 
 export const state = {
@@ -11,11 +11,16 @@ export const state = {
   showStatic: true,
   showWave: true,
   highpass: true,
+  showEquipot: false,
   simSpeed: 1,
   mode: 'charge' as Mode,
   shape: 'rect' as Shape,
   sigma: SIGMA_CONDUCTOR_DEFAULT,
   epsR: EPS_R_DEFAULT,
+  oscEnable: false,
+  oscFreq: 0.08,
+  oscAmp: 6.0,
+  oscAngleDeg: 0,
 };
 
 type ResetHandler = () => void;
@@ -90,6 +95,7 @@ export function setup(onReset: ResetHandler): void {
     body: document.getElementById('modeBody') as HTMLButtonElement,
     conductor: document.getElementById('modeConductor') as HTMLButtonElement,
     dielectric: document.getElementById('modeDielectric') as HTMLButtonElement,
+    probe: document.getElementById('modeProbe') as HTMLButtonElement,
     erase: document.getElementById('modeErase') as HTMLButtonElement,
   };
   const shapeBtns: Record<Shape, HTMLButtonElement> = {
@@ -103,6 +109,15 @@ export function setup(onReset: ResetHandler): void {
   const epsrEl = document.getElementById('epsr') as HTMLInputElement;
   const epsrVal = document.getElementById('epsrVal') as HTMLSpanElement;
 
+  const oscEnableEl = document.getElementById('oscEnable') as HTMLInputElement;
+  const oscFreqEl = document.getElementById('oscFreq') as HTMLInputElement;
+  const oscFreqVal = document.getElementById('oscFreqVal') as HTMLSpanElement;
+  const oscAmpEl = document.getElementById('oscAmp') as HTMLInputElement;
+  const oscAmpVal = document.getElementById('oscAmpVal') as HTMLSpanElement;
+  const oscAngleEl = document.getElementById('oscAngle') as HTMLInputElement;
+  const oscAngleVal = document.getElementById('oscAngleVal') as HTMLSpanElement;
+  const showEquipotEl = document.getElementById('showEquipot') as HTMLInputElement;
+
   const refreshModeAffordances = (): void => {
     // Shape sub-mode is meaningful when placing a material or a charged body.
     const shapeNeeded =
@@ -112,6 +127,12 @@ export function setup(onReset: ResetHandler): void {
     });
     sigmaEl.disabled = state.mode !== 'conductor';
     epsrEl.disabled = state.mode !== 'dielectric';
+    const oscActive = state.mode === 'body' || state.mode === 'charge';
+    oscEnableEl.disabled = !oscActive;
+    const oscRunnable = oscActive && state.oscEnable;
+    oscFreqEl.disabled = !oscRunnable;
+    oscAmpEl.disabled = !oscRunnable;
+    oscAngleEl.disabled = !oscRunnable;
   };
 
   const setMode = (m: Mode): void => {
@@ -153,6 +174,37 @@ export function setup(onReset: ResetHandler): void {
   epsrEl.value = String(EPS_R_DEFAULT);
   updateEpsr();
   epsrEl.addEventListener('input', updateEpsr);
+
+  // Oscillator controls
+  state.oscEnable = oscEnableEl.checked;
+  oscEnableEl.addEventListener('change', () => {
+    state.oscEnable = oscEnableEl.checked;
+    refreshModeAffordances();
+  });
+  const updateOscFreq = (): void => {
+    state.oscFreq = parseFloat(oscFreqEl.value);
+    oscFreqVal.textContent = state.oscFreq.toFixed(3);
+  };
+  updateOscFreq();
+  oscFreqEl.addEventListener('input', updateOscFreq);
+  const updateOscAmp = (): void => {
+    state.oscAmp = parseFloat(oscAmpEl.value);
+    oscAmpVal.textContent = state.oscAmp.toFixed(1);
+  };
+  updateOscAmp();
+  oscAmpEl.addEventListener('input', updateOscAmp);
+  const updateOscAngle = (): void => {
+    state.oscAngleDeg = parseFloat(oscAngleEl.value);
+    oscAngleVal.textContent = `${state.oscAngleDeg.toFixed(0)}°`;
+  };
+  updateOscAngle();
+  oscAngleEl.addEventListener('input', updateOscAngle);
+
+  // Equipotential toggle
+  state.showEquipot = showEquipotEl.checked;
+  showEquipotEl.addEventListener('change', () => {
+    state.showEquipot = showEquipotEl.checked;
+  });
 
   refreshModeAffordances();
 }

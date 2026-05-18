@@ -6,6 +6,7 @@ import * as Particles from './sim/particles';
 import * as Conductors from './sim/conductors';
 import * as Dielectric from './sim/dielectric';
 import * as Body from './sim/chargedBody';
+import * as Probe from './sim/probe';
 
 import * as Heatmap from './render/heatmap';
 import * as Vectors from './render/vectors';
@@ -15,10 +16,13 @@ import * as Phi3D from './render/phi3d';
 import * as ConductorsR from './render/conductors';
 import * as DielectricR from './render/dielectric';
 import * as BodyR from './render/chargedBody';
+import * as Equipot from './render/equipotential';
+import * as ProbeR from './render/probeChart';
 
 import { setup as setupInput } from './ui/input';
 import { setup as setupControls, state as ui } from './ui/controls';
 import { requestRender, consumeRender } from './ui/render-request';
+import * as Panel from './ui/paramPanel';
 
 import { canvas as mainCanvas } from './render/canvas';
 
@@ -47,10 +51,12 @@ function reset(): void {
   Conductors.clear();
   Dielectric.clear();
   Body.clear();
+  Probe.clear();
   Poisson.reset();
   FDTD.reset();
   Highpass.reset();
   Hand.endDrag();
+  Panel.close();
 }
 
 setupInput(() => ui.charge);
@@ -69,6 +75,11 @@ toolbarEl.addEventListener('change', requestRender);
 toolbarEl.addEventListener('click', requestRender);
 document.addEventListener('keydown', requestRender);
 
+// Clicks on the toolbar (anywhere, buttons included) dismiss the param panel.
+// The panel sits outside the toolbar in the DOM, so its own clicks don't
+// reach this handler.
+toolbarEl.addEventListener('mousedown', () => Panel.close());
+
 let accumulator = 0;
 
 function simStep(): void {
@@ -79,6 +90,7 @@ function simStep(): void {
   Poisson.solve();
   FDTD.step();
   Highpass.update();
+  Probe.sample();
 }
 
 function frame(): void {
@@ -104,8 +116,11 @@ function frame(): void {
     DielectricR.draw();
     ConductorsR.draw();
     BodyR.draw();
+    if (ui.showEquipot) Equipot.draw();
     Vectors.draw(ui.showStatic, ui.showWave);
     ParticlesR.draw();
+    ProbeR.drawPins();
+    ProbeR.drawChart();
     ConductorsR.drawPreview();
     BodyR.drawPreview();
   }

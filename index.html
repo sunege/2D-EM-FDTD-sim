@@ -114,6 +114,74 @@
         line-height: 1.5;
         text-align: center;
       }
+      #paramPanel {
+        position: fixed;
+        right: 16px;
+        top: 96px;
+        width: 260px;
+        max-height: calc(100vh - 120px);
+        overflow-y: auto;
+        background: #1a1a26;
+        border: 1px solid #3a3a5a;
+        border-radius: 6px;
+        padding: 8px 12px 10px;
+        z-index: 20;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+        font-size: 13px;
+      }
+      #paramPanel .pp-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid #2a2a3a;
+      }
+      #paramPanel .pp-title { font-weight: 600; }
+      #paramPanel .pp-close {
+        background: transparent;
+        border: none;
+        color: #aab;
+        font-size: 18px;
+        line-height: 1;
+        padding: 0 6px;
+        cursor: pointer;
+      }
+      #paramPanel .pp-close:hover { color: #fff; background: transparent; }
+      #paramPanel .pp-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 6px 0;
+      }
+      #paramPanel .pp-row > label {
+        flex-shrink: 0;
+        min-width: 28px;
+        opacity: 0.85;
+      }
+      #paramPanel .pp-row input[type="range"] {
+        flex: 1;
+        width: auto;
+      }
+      #paramPanel .pp-row .pp-val {
+        flex-shrink: 0;
+        min-width: 48px;
+        text-align: right;
+        opacity: 0.85;
+        font-variant-numeric: tabular-nums;
+      }
+      #paramPanel .pp-row button {
+        flex: 1;
+        padding: 4px 8px;
+      }
+      #paramPanel .pp-row-check > label {
+        min-width: 0;
+        cursor: pointer;
+      }
+      #paramPanel .pp-row-info > span {
+        opacity: 0.7;
+        font-size: 12px;
+      }
     </style>
   </head>
   <body>
@@ -149,6 +217,7 @@
         <button id="modeBody">帯電体</button>
         <button id="modeConductor">導体</button>
         <button id="modeDielectric">誘電体</button>
+        <button id="modeProbe">プローブ</button>
         <button id="modeErase">削除</button>
       </div>
       <div class="sep"></div>
@@ -172,6 +241,23 @@
       </div>
       <div class="sep"></div>
       <div class="group">
+        <label><input type="checkbox" id="oscEnable" /> 振動</label>
+        <label for="oscFreq">f</label>
+        <input type="range" id="oscFreq" min="0.01" max="0.3" step="0.005" value="0.08" />
+        <span id="oscFreqVal">0.080</span>
+        <label for="oscAmp">A</label>
+        <input type="range" id="oscAmp" min="0.5" max="20" step="0.5" value="6" />
+        <span id="oscAmpVal">6.0</span>
+        <label for="oscAngle">θ</label>
+        <input type="range" id="oscAngle" min="0" max="180" step="5" value="0" />
+        <span id="oscAngleVal">0°</span>
+      </div>
+      <div class="sep"></div>
+      <div class="group">
+        <label><input type="checkbox" id="showEquipot" /> 等電位線</label>
+      </div>
+      <div class="sep"></div>
+      <div class="group">
         <button id="phi3dBtn">電位 3D</button>
         <button id="phi3dResetBtn" style="display:none">ビューリセット</button>
       </div>
@@ -181,13 +267,15 @@
         <canvas id="canvas"></canvas>
         <canvas id="phi-canvas"></canvas>
       </div>
+      <canvas id="probeChart" width="640" height="160" style="margin-top:8px;background:#181822;display:none;"></canvas>
       <p class="hint">
-        既存への操作はモード非依存: 電荷/帯電体クリック→ドラッグ移動 / 導体クリック→接地↔浮遊切替。
-        空白部はモードで配置: 電荷=クリック / 帯電体・導体・誘電体=形状（矩形/円/ドーナツ）をドラッグでサイズ指定 / 削除=クリックで対象を消去。
-        帯電体は総電気量を一様分布させた剛体（赤=正, 青=負）。導体の色は σ（茶=低σ → 灰=高σ）、接地導体には ⏚ の回路記号。誘電体は青tint。
+        既存への操作はモード非依存: 電荷/帯電体クリック→ドラッグ移動 / 導体クリック→接地↔浮遊切替 / 右クリック→パラメータパネル。
+        空白部はモードで配置: 電荷=クリック / 帯電体・導体・誘電体=形状（矩形/円/ドーナツ）をドラッグでサイズ指定 / プローブ=クリックで配置（同位置クリックで削除）/ 削除=クリックで対象を消去。
+        電荷・帯電体は振動 ON で正弦振動（ダイポール放射、振動体は固定）。
         Space: 一時停止 / R: 全リセット
       </p>
     </div>
+    <div id="paramPanel"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

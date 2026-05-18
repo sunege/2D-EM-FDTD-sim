@@ -12,6 +12,10 @@ import { mask as condMask } from './conductors';
 // frame. Hit testing uses shape math directly. Each frame:
 //   step()    — drag-driven motion (mirrors godhand for particles)
 //   deposit() — rasterize current pose into rho/Jx/Jy (added to deposition.ts)
+//
+// Oscillator mode: when omegaArr[g] > 0, the body's position is driven
+// kinematically by sin(phase) around (eqXArr, eqYArr) instead of by drag.
+// Velocity (used for J) is the analytic derivative, so radiation is clean.
 
 export const MAX_GROUPS = 64;
 
@@ -28,6 +32,15 @@ const cyArr = new Float32Array(MAX_GROUPS);
 const vxArr = new Float32Array(MAX_GROUPS);
 const vyArr = new Float32Array(MAX_GROUPS);
 const qArr = new Float32Array(MAX_GROUPS);
+
+// Oscillator state. omega == 0 → non-oscillating (drag-driven).
+const omegaArr = new Float32Array(MAX_GROUPS);
+const ampArr = new Float32Array(MAX_GROUPS);
+const dirXArr = new Float32Array(MAX_GROUPS);
+const dirYArr = new Float32Array(MAX_GROUPS);
+const phaseArr = new Float32Array(MAX_GROUPS);
+const eqXArr = new Float32Array(MAX_GROUPS);
+const eqYArr = new Float32Array(MAX_GROUPS);
 
 export const drag = { groupId: 0, targetX: 0, targetY: 0 };
 
@@ -51,6 +64,13 @@ export function clear(): void {
   vxArr.fill(0);
   vyArr.fill(0);
   qArr.fill(0);
+  omegaArr.fill(0);
+  ampArr.fill(0);
+  dirXArr.fill(0);
+  dirYArr.fill(0);
+  phaseArr.fill(0);
+  eqXArr.fill(0);
+  eqYArr.fill(0);
   drag.groupId = 0;
 }
 
@@ -61,7 +81,50 @@ export function removeGroup(g: number): void {
   qArr[g] = 0;
   vxArr[g] = 0;
   vyArr[g] = 0;
+  omegaArr[g] = 0;
+  ampArr[g] = 0;
   if (drag.groupId === g) drag.groupId = 0;
+}
+
+// Enable oscillation on group g. amp in cells, omega in rad/Δt, angle in rad.
+// Setting omega = 0 disables (returns to drag-driven motion).
+// Resets phase and pins eq at the current centroid — use for "turn on".
+export function setOscillator(g: number, omega: number, amp: number, angleRad: number): void {
+  if (!isInUse(g)) return;
+  omegaArr[g] = omega;
+  ampArr[g] = amp;
+  dirXArr[g] = Math.cos(angleRad);
+  dirYArr[g] = Math.sin(angleRad);
+  phaseArr[g] = 0;
+  eqXArr[g] = cxArr[g];
+  eqYArr[g] = cyArr[g];
+}
+
+// Update oscillator params without touching phase or equilibrium. Use this for
+// live slider edits on a running oscillator (avoids position jumps).
+export function updateOscillator(g: number, omega: number, amp: number, angleRad: number): void {
+  if (!isInUse(g)) return;
+  omegaArr[g] = omega;
+  ampArr[g] = amp;
+  dirXArr[g] = Math.cos(angleRad);
+  dirYArr[g] = Math.sin(angleRad);
+}
+
+export function clearOscillator(g: number): void {
+  if (!isInUse(g)) return;
+  omegaArr[g] = 0;
+  ampArr[g] = 0;
+  phaseArr[g] = 0;
+  vxArr[g] = 0;
+  vyArr[g] = 0;
+  // Snap back to equilibrium so a half-cycle position doesn't get frozen in.
+  cxArr[g] = eqXArr[g];
+  cyArr[g] = eqYArr[g];
+}
+
+export function setQ(g: number, totalQ: number): void {
+  if (!isInUse(g)) return;
+  qArr[g] = totalQ;
 }
 
 export function addDisk(cx: number, cy: number, r: number, totalQ: number): number {
@@ -148,9 +211,14 @@ export function isInUse(g: number): boolean {
 }
 
 export function startDrag(g: number, tx: number, ty: number): void {
+  if (!isInUse(g) || omegaArr[g] > 0) return; // oscillating bodies are pinned
   drag.groupId = g;
   drag.targetX = tx;
   drag.targetY = ty;
+}
+
+export function isOscillating(g: number): boolean {
+  return isInUse(g) && omegaArr[g] > 0;
 }
 
 export function updateTarget(tx: number, ty: number): void {
@@ -163,10 +231,33 @@ export function endDrag(): void {
 }
 
 export function step(): void {
-  // Only the currently-dragged body gets a driving force + damping; others
-  // coast inertially (mirrors particles in godhand.ts).
   for (let g = 1; g < MAX_GROUPS; g++) {
     if (!inUse[g]) continue;
+
+    if (omegaArr[g] > 0) {
+      // Oscillator: position and velocity are analytic functions of phase.
+      // Equilibrium point is fixed (set in setOscillator); drag is ignored.
+      phaseArr[g] += omegaArr[g] * DT;
+      const s = Math.sin(phaseArr[g]);
+      const c = Math.cos(phaseArr[g]);
+      const a = ampArr[g];
+      cxArr[g] = eqXArr[g] + a * dirXArr[g] * s;
+      cyArr[g] = eqYArr[g] + a * dirYArr[g] * s;
+      const omegaA = omegaArr[g] * a;
+      vxArr[g] = omegaA * dirXArr[g] * c;
+      vyArr[g] = omegaA * dirYArr[g] * c;
+      // Clamp the on-axis speed to VMAX (amp*omega should be set sanely; this
+      // is a safety net for extreme slider combinations).
+      const speed2 = vxArr[g] * vxArr[g] + vyArr[g] * vyArr[g];
+      if (speed2 > VMAX * VMAX) {
+        const k = VMAX / Math.sqrt(speed2);
+        vxArr[g] *= k;
+        vyArr[g] *= k;
+      }
+      continue;
+    }
+
+    // Non-oscillating: drag-driven motion (mirrors godhand for particles).
     let ax = 0, ay = 0;
     if (drag.groupId === g) {
       ax = K_DRAG * (drag.targetX - cxArr[g]) - K_DAMP * vxArr[g];
@@ -275,6 +366,12 @@ export function getCy(g: number): number { return cyArr[g]; }
 export function getParam1(g: number): number { return param1[g]; }
 export function getParam2(g: number): number { return param2[g]; }
 export function getQ(g: number): number { return qArr[g]; }
+export function getOmega(g: number): number { return omegaArr[g]; }
+export function getAmp(g: number): number { return ampArr[g]; }
+export function getDirX(g: number): number { return dirXArr[g]; }
+export function getDirY(g: number): number { return dirYArr[g]; }
+export function getEqX(g: number): number { return eqXArr[g]; }
+export function getEqY(g: number): number { return eqYArr[g]; }
 export const SHAPE_DISK = Shape.Disk;
 export const SHAPE_ANNULUS = Shape.Annulus;
 export const SHAPE_RECT = Shape.Rect;

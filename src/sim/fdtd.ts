@@ -1,7 +1,7 @@
 import { NX, NY, DX, DY, DT, C } from '../config';
 import { idx, makeField } from './grid';
 import { Jx, Jy } from './deposition';
-import { mask as condMask, getSigma } from './conductors';
+import { mask as condMask, groupId as condGroupId, groupSigma } from './conductors';
 import { eps } from './dielectric';
 
 export const Ex = makeField();
@@ -26,7 +26,6 @@ export function step(): void {
   //   x = σ·Δt/(2ε),  ca = (1-x)/(1+x),  cbDt = Δt/(ε(1+x))
   //   E^{n+1} = ca · E^n + cbDt · (curl - J)
   // Vacuum + no conductor (ε=1, σ=0): ca=1, cbDt=Δt → standard FDTD.
-  const sigma = getSigma();
   const dtHalf = DT * 0.5;
 
   for (let i = 0; i < NX; i++) {
@@ -46,7 +45,7 @@ export function step(): void {
     for (let i = 0; i < NX; i++) {
       const k = idx(i, j);
       const e = eps[k];
-      const x = (condMask[k] ? sigma : 0) * dtHalf / e;
+      const x = (condMask[k] ? groupSigma[condGroupId[k]] : 0) * dtHalf / e;
       const denom = 1 + x;
       const ca = (1 - x) / denom;
       const cbDt = DT / (e * denom);
@@ -58,7 +57,7 @@ export function step(): void {
     for (let i = 1; i < NX - 1; i++) {
       const k = idx(i, j);
       const e = eps[k];
-      const x = (condMask[k] ? sigma : 0) * dtHalf / e;
+      const x = (condMask[k] ? groupSigma[condGroupId[k]] : 0) * dtHalf / e;
       const denom = 1 + x;
       const ca = (1 - x) / denom;
       const cbDt = DT / (e * denom);

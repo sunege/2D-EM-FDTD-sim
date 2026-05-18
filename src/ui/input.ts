@@ -3,6 +3,8 @@ import * as Hand from '../sim/godhand';
 import * as Cond from '../sim/conductors';
 import * as Diel from '../sim/dielectric';
 import * as Body from '../sim/chargedBody';
+import * as Probe from '../sim/probe';
+import * as Panel from './paramPanel';
 import { canvas, canvasToGrid } from '../render/canvas';
 import { NX, NY, PARTICLE_MARGIN } from '../config';
 import { state as ui, type Shape } from './controls';
@@ -29,13 +31,18 @@ function finalizePlacement(): void {
   const kind = placement.material;
   const er = placement.epsR;
   const Q = placement.charge;
+  const applyOsc = (g: number): void => {
+    if (g > 0 && ui.oscEnable) {
+      Body.setOscillator(g, ui.oscFreq, ui.oscAmp, ui.oscAngleDeg * Math.PI / 180);
+    }
+  };
   switch (placement.shape) {
     case 'disk': {
       const r = Math.hypot(bx - ax, by - ay);
       if (r < 0.5) break;
       if (kind === 'conductor') Cond.addDisk(ax, ay, r);
       else if (kind === 'dielectric') Diel.addDisk(ax, ay, r, er);
-      else Body.addDisk(ax, ay, r, Q);
+      else applyOsc(Body.addDisk(ax, ay, r, Q));
       break;
     }
     case 'annulus': {
@@ -43,14 +50,14 @@ function finalizePlacement(): void {
       if (rOuter < 1) break;
       if (kind === 'conductor') Cond.addAnnulus(ax, ay, rOuter, rOuter * 0.5);
       else if (kind === 'dielectric') Diel.addAnnulus(ax, ay, rOuter, rOuter * 0.5, er);
-      else Body.addAnnulus(ax, ay, rOuter, rOuter * 0.5, Q);
+      else applyOsc(Body.addAnnulus(ax, ay, rOuter, rOuter * 0.5, Q));
       break;
     }
     case 'rect': {
       if (Math.abs(bx - ax) < 0.5 || Math.abs(by - ay) < 0.5) break;
       if (kind === 'conductor') Cond.addRect(ax, ay, bx, by);
       else if (kind === 'dielectric') Diel.addRect(ax, ay, bx, by, er);
-      else Body.addRect(ax, ay, bx, by, Q);
+      else applyOsc(Body.addRect(ax, ay, bx, by, Q));
       break;
     }
   }
@@ -94,20 +101,25 @@ export function setup(getCharge: ChargeProvider): void {
   };
 
   const eraseAt = (x: number, y: number): void => {
-    // Priority: particle > body > conductor > dielectric
+    // Priority: probe > particle > body > conductor > dielectric
+    const probeHit = Probe.findNearest(x, y, PICK_RADIUS);
+    if (probeHit >= 0) { Probe.remove(probeHit); return; }
     const hit = P.findNearest(x, y, PICK_RADIUS);
-    if (hit >= 0) { P.remove(hit); return; }
+    if (hit >= 0) { Panel.closeIfFor('particle', hit); P.remove(hit); return; }
     const bg = Body.getGroupAt(x, y);
-    if (bg > 0) { Body.removeGroup(bg); return; }
+    if (bg > 0) { Panel.closeIfFor('body', bg); Body.removeGroup(bg); return; }
     const cg = Cond.getGroupAt(x, y);
-    if (cg > 0) { Cond.removeGroup(cg); return; }
+    if (cg > 0) { Panel.closeIfFor('conductor', cg); Cond.removeGroup(cg); return; }
     const dg = Diel.getGroupAt(x, y);
-    if (dg > 0) { Diel.removeGroup(dg); return; }
+    if (dg > 0) { Panel.closeIfFor('dielectric', dg); Diel.removeGroup(dg); return; }
   };
 
   canvas.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
+
+    // Any canvas click dismisses the panel; right-clicks may reopen it below.
+    Panel.close();
 
     // Erase mode: handle and exit
     if (ui.mode === 'erase' && e.button === 0) {
@@ -117,6 +129,30 @@ export function setup(getCharge: ChargeProvider): void {
     }
 
     const { x: rx, y: ry } = eventToGrid(e, 0);
+
+    // Right-click on an existing entity → open parameter panel and exit.
+    // Priority: particle > body > conductor > dielectric (probes have no panel).
+    // Empty cell falls through (charge mode places a negative charge).
+    if (e.button === 2) {
+      const hit = P.findNearest(rx, ry, PICK_RADIUS);
+      if (hit >= 0) { Panel.openFor('particle', hit); return; }
+      const bg = Body.getGroupAt(rx, ry);
+      if (bg > 0) { Panel.openFor('body', bg); return; }
+      const cg = Cond.getGroupAt(rx, ry);
+      if (cg > 0) { Panel.openFor('conductor', cg); return; }
+      const dg = Diel.getGroupAt(rx, ry);
+      if (dg > 0) { Panel.openFor('dielectric', dg); return; }
+    }
+
+    // Universal: click on existing probe → remove it (any mode). Probes are
+    // checked before other entities so clicking the pin always toggles it off.
+    if (e.button === 0) {
+      const probeHit = Probe.findNearest(rx, ry, PICK_RADIUS);
+      if (probeHit >= 0) {
+        Probe.remove(probeHit);
+        return;
+      }
+    }
 
     // Universal: click on existing particle → start drag (running only)
     if (e.button === 0 && !ui.paused) {
@@ -148,20 +184,28 @@ export function setup(getCharge: ChargeProvider): void {
       }
     }
 
+    // Probe mode: add a probe at the click point.
+    if (ui.mode === 'probe' && e.button === 0) {
+      Probe.add(rx, ry);
+      return;
+    }
+
     // Empty cell: dispatch by mode (shape modes drag-to-size)
     if (isShapeMode() && e.button === 0) {
       beginPlacement(rx, ry, rx, ry);
       return;
     }
 
-    // Charge mode (or right-click): add new charge
+    // Charge mode (or right-click on empty): add new charge.
     const { x: cx, y: cy } = eventToGrid(e, PARTICLE_MARGIN);
     const q = e.button === 2 ? -getCharge() : getCharge();
-    if (ui.paused) {
-      P.add(cx, cy, q);
+    const pidx = P.add(cx, cy, q);
+    if (ui.oscEnable) {
+      // Oscillating particle: pin at placement point, no drag.
+      P.setOscillator(pidx, ui.oscFreq, ui.oscAmp, ui.oscAngleDeg * Math.PI / 180);
       return;
     }
-    const pidx = P.add(cx, cy, q);
+    if (ui.paused) return;
     Hand.startDrag(pidx, cx, cy);
   });
 
