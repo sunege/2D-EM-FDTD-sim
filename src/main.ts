@@ -18,17 +18,20 @@ import * as DielectricR from './render/dielectric';
 import * as BodyR from './render/chargedBody';
 import * as Equipot from './render/equipotential';
 import * as ProbeR from './render/probeChart';
+import * as Viewport from './render/viewport';
 
 import { setup as setupInput } from './ui/input';
 import { setup as setupControls, state as ui } from './ui/controls';
 import { requestRender, consumeRender } from './ui/render-request';
 import * as Panel from './ui/paramPanel';
 
-import { canvas as mainCanvas } from './render/canvas';
+import { canvas as mainCanvas, ctx } from './render/canvas';
+import { CANVAS_W, CANVAS_H } from './config';
 
 const phi3dCanvas = document.getElementById('phi-canvas') as HTMLCanvasElement;
 const phi3dBtn = document.getElementById('phi3dBtn') as HTMLButtonElement;
 const phi3dResetBtn = document.getElementById('phi3dResetBtn') as HTMLButtonElement;
+const view2dResetBtn = document.getElementById('view2dResetBtn') as HTMLButtonElement;
 let phi3dVisible = false;
 phi3dBtn.addEventListener('click', () => {
   phi3dVisible = !phi3dVisible;
@@ -37,14 +40,17 @@ phi3dBtn.addEventListener('click', () => {
     phi3dBtn.classList.add('active');
     phi3dBtn.textContent = '電位 3D ×';
     phi3dResetBtn.style.display = '';
+    view2dResetBtn.style.display = 'none';
   } else {
     Phi3D.hide(phi3dCanvas);
     phi3dBtn.classList.remove('active');
     phi3dBtn.textContent = '電位 3D';
     phi3dResetBtn.style.display = 'none';
+    view2dResetBtn.style.display = '';
   }
 });
 phi3dResetBtn.addEventListener('click', () => Phi3D.resetCamera());
+view2dResetBtn.addEventListener('click', () => { Viewport.reset(); requestRender(); });
 
 function reset(): void {
   Particles.clear();
@@ -108,6 +114,12 @@ function frame(): void {
   }
 
   if (!ui.paused || requested) {
+    // Clear full canvas (identity transform) then apply viewport
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    ctx.setTransform(Viewport.zoom, 0, 0, Viewport.zoom, Viewport.panX, Viewport.panY);
+
     if (ui.showWave) {
       Heatmap.draw();
     } else {
@@ -123,6 +135,8 @@ function frame(): void {
     ProbeR.drawChart();
     ConductorsR.drawPreview();
     BodyR.drawPreview();
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 
   requestAnimationFrame(frame);

@@ -1,6 +1,7 @@
 import { NX, NY, CANVAS_W, CANVAS_H, PIXEL_SCALE, EPS_R_MAX } from '../config';
 import { eps } from '../sim/dielectric';
 import { ctx } from './canvas';
+import { getZoom } from './viewport';
 
 const overlay = document.createElement('canvas');
 overlay.width = NX;
@@ -31,7 +32,7 @@ export function draw(): void {
   // 1px border: draw edge segments on the main canvas at cell boundaries
   ctx.save();
   ctx.strokeStyle = 'rgba(0,0,0,0.28)';
-  ctx.lineWidth = 1;
+  ctx.lineWidth = 1 / getZoom();
   ctx.beginPath();
   for (let j = 0; j < NY; j++) {
     for (let i = 0; i < NX; i++) {

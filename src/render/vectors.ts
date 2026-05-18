@@ -3,8 +3,8 @@ import { idx } from '../sim/grid';
 import { ExStatic, EyStatic } from '../sim/poisson';
 import { ExDisp, EyDisp } from './highpass';
 import { ctx } from './canvas';
+import { getZoom } from './viewport';
 
-const ARROW_MAX_PX = VECTOR_STRIDE * PIXEL_SCALE * 1.00;
 const HEAD_PX = 4;
 const HEAD_ANGLE = 0.42;
 const SHOW_THRESHOLD = 0.10;
@@ -12,11 +12,18 @@ const SHOW_THRESHOLD = 0.10;
 export function draw(includeStatic: boolean, includeWave: boolean): void {
   if (!includeStatic && !includeWave) return;
 
-  const half = VECTOR_STRIDE / 2 | 0;
+  const zoom = getZoom();
+  // Adaptive stride: show more arrows when zoomed in, keeping screen density constant.
+  const stride = Math.max(1, Math.round(VECTOR_STRIDE / zoom));
+  const half = stride / 2 | 0;
+  // Arrow max length scales inversely with zoom so on-screen size stays proportional.
+  const arrowMaxPx = stride * PIXEL_SCALE * 1.00;
+  // Head size in logical coords (compensated so head stays same screen size).
+  const headPx = HEAD_PX / zoom;
 
   let maxMag = 1e-6;
-  for (let j = half; j < NY; j += VECTOR_STRIDE) {
-    for (let i = half; i < NX; i += VECTOR_STRIDE) {
+  for (let j = half; j < NY; j += stride) {
+    for (let i = half; i < NX; i += stride) {
       const k = idx(i, j);
       const ex = (includeStatic ? ExStatic[k] : 0) + (includeWave ? ExDisp[k] : 0);
       const ey = (includeStatic ? EyStatic[k] : 0) + (includeWave ? EyDisp[k] : 0);
@@ -25,7 +32,7 @@ export function draw(includeStatic: boolean, includeWave: boolean): void {
     }
   }
 
-  const fieldScale = ARROW_MAX_PX / maxMag;
+  const fieldScale = arrowMaxPx / maxMag;
 
   ctx.save();
   ctx.beginPath();
@@ -35,8 +42,8 @@ export function draw(includeStatic: boolean, includeWave: boolean): void {
   const cosN = cosP;
   const sinN = -sinP;
 
-  for (let j = half; j < NY; j += VECTOR_STRIDE) {
-    for (let i = half; i < NX; i += VECTOR_STRIDE) {
+  for (let j = half; j < NY; j += stride) {
+    for (let i = half; i < NX; i += stride) {
       const k = idx(i, j);
       const ex = (includeStatic ? ExStatic[k] : 0) + (includeWave ? ExDisp[k] : 0);
       const ey = (includeStatic ? EyStatic[k] : 0) + (includeWave ? EyDisp[k] : 0);
@@ -55,19 +62,19 @@ export function draw(includeStatic: boolean, includeWave: boolean): void {
       ctx.moveTo(ax, ay);
       ctx.lineTo(bx, by);
       ctx.moveTo(bx, by);
-      ctx.lineTo(bx - HEAD_PX * (ux * cosP - uy * sinP), by - HEAD_PX * (uy * cosP + ux * sinP));
+      ctx.lineTo(bx - headPx * (ux * cosP - uy * sinP), by - headPx * (uy * cosP + ux * sinP));
       ctx.moveTo(bx, by);
-      ctx.lineTo(bx - HEAD_PX * (ux * cosN - uy * sinN), by - HEAD_PX * (uy * cosN + ux * sinN));
+      ctx.lineTo(bx - headPx * (ux * cosN - uy * sinN), by - headPx * (uy * cosN + ux * sinN));
     }
   }
 
-  // white outline pass
-  ctx.lineWidth = 3.5;
+  // white outline pass — line width compensated to stay constant on screen
+  ctx.lineWidth = 3.5 / zoom;
   ctx.strokeStyle = 'rgba(255,255,255,0.90)';
   ctx.stroke();
 
   // black arrow pass
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = 1.5 / zoom;
   ctx.strokeStyle = 'rgba(0,0,0,0.85)';
   ctx.stroke();
 

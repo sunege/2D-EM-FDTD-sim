@@ -6,6 +6,7 @@ import {
 import { idx } from '../sim/grid';
 import { ctx } from './canvas';
 import { placement } from '../ui/input';
+import { getZoom } from './viewport';
 
 const overlay = document.createElement('canvas');
 overlay.width = NX;
@@ -103,7 +104,7 @@ export function draw(): void {
   // 1px border: draw edge segments on the main canvas at cell boundaries
   ctx.save();
   ctx.strokeStyle = 'rgba(0,0,0,0.28)';
-  ctx.lineWidth = 1;
+  ctx.lineWidth = 1 / getZoom();
   ctx.beginPath();
   for (let j = 0; j < NY; j++) {
     for (let i = 0; i < NX; i++) {

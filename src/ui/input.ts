@@ -6,8 +6,10 @@ import * as Body from '../sim/chargedBody';
 import * as Probe from '../sim/probe';
 import * as Panel from './paramPanel';
 import { canvas, canvasToGrid } from '../render/canvas';
+import * as Viewport from '../render/viewport';
 import { NX, NY, PARTICLE_MARGIN } from '../config';
 import { state as ui, type Shape } from './controls';
+import { requestRender } from './render-request';
 
 type ChargeProvider = () => number;
 
@@ -87,18 +89,33 @@ function beginPlacement(anchorX: number, anchorY: number, currentX: number, curr
   placement.current = { x: currentX, y: currentY };
 }
 
+// Threshold in canvas pixels to distinguish right-click from right-drag.
+const PAN_DRAG_THRESHOLD_PX = 10;
+
 export function setup(getCharge: ChargeProvider): void {
   const clamp = (v: number, lo: number, hi: number) => v < lo ? lo : v > hi ? hi : v;
-  const eventToGrid = (e: PointerEvent, margin: number) => {
+  const eventToCanvas = (e: MouseEvent) => {
     const rect = canvas.getBoundingClientRect();
-    const cx = ((e.clientX - rect.left) / rect.width) * canvas.width;
-    const cy = ((e.clientY - rect.top) / rect.height) * canvas.height;
+    return {
+      cx: ((e.clientX - rect.left) / rect.width) * canvas.width,
+      cy: ((e.clientY - rect.top) / rect.height) * canvas.height,
+    };
+  };
+  const eventToGrid = (e: PointerEvent, margin: number) => {
+    const { cx, cy } = eventToCanvas(e);
     const g = canvasToGrid(cx, cy);
     return {
       x: clamp(g.x, margin, NX - 1 - margin),
       y: clamp(g.y, margin, NY - 1 - margin),
     };
   };
+
+  // Right-drag pan state
+  const rightDown = { cx: 0, cy: 0 };
+  let rightLastCx = 0, rightLastCy = 0;
+  const rightGrid = { x: 0, y: 0 };
+  let rightPending = false;
+  let rightDragging = false;
 
   const eraseAt = (x: number, y: number): void => {
     // Priority: probe > particle > body > conductor > dielectric
@@ -130,18 +147,15 @@ export function setup(getCharge: ChargeProvider): void {
 
     const { x: rx, y: ry } = eventToGrid(e, 0);
 
-    // Right-click on an existing entity → open parameter panel and exit.
-    // Priority: particle > body > conductor > dielectric (probes have no panel).
-    // Empty cell falls through (charge mode places a negative charge).
+    // Right-button: defer panel/charge action until release to allow right-drag pan.
     if (e.button === 2) {
-      const hit = P.findNearest(rx, ry, PICK_RADIUS);
-      if (hit >= 0) { Panel.openFor('particle', hit); return; }
-      const bg = Body.getGroupAt(rx, ry);
-      if (bg > 0) { Panel.openFor('body', bg); return; }
-      const cg = Cond.getGroupAt(rx, ry);
-      if (cg > 0) { Panel.openFor('conductor', cg); return; }
-      const dg = Diel.getGroupAt(rx, ry);
-      if (dg > 0) { Panel.openFor('dielectric', dg); return; }
+      const { cx, cy } = eventToCanvas(e);
+      rightDown.cx = cx; rightDown.cy = cy;
+      rightLastCx = cx; rightLastCy = cy;
+      rightGrid.x = rx; rightGrid.y = ry;
+      rightPending = true;
+      rightDragging = false;
+      return;
     }
 
     // Universal: click on existing probe → remove it (any mode). Probes are
@@ -210,6 +224,23 @@ export function setup(getCharge: ChargeProvider): void {
   });
 
   canvas.addEventListener('pointermove', (e) => {
+    // Right-drag pan (works in any mode)
+    if (rightPending && (e.buttons & 2)) {
+      const { cx, cy } = eventToCanvas(e);
+      if (!rightDragging) {
+        const ddx = cx - rightDown.cx;
+        const ddy = cy - rightDown.cy;
+        if (Math.hypot(ddx, ddy) > PAN_DRAG_THRESHOLD_PX) rightDragging = true;
+      }
+      if (rightDragging) {
+        Viewport.pan(cx - rightLastCx, cy - rightLastCy);
+        requestRender();
+      }
+      rightLastCx = cx;
+      rightLastCy = cy;
+      if (rightDragging) return;
+    }
+
     if (ui.mode === 'erase') {
       if (e.buttons & 1) {
         const { x, y } = eventToGrid(e, 0);
@@ -250,6 +281,36 @@ export function setup(getCharge: ChargeProvider): void {
     if (canvas.hasPointerCapture(e.pointerId)) {
       canvas.releasePointerCapture(e.pointerId);
     }
+
+    // Resolve deferred right-button action
+    if (rightPending) {
+      rightPending = false;
+      const wasDragging = rightDragging;
+      rightDragging = false;
+      if (!wasDragging && e.type !== 'pointercancel') {
+        // Short right-click: execute panel/charge action
+        const rx = rightGrid.x, ry = rightGrid.y;
+        const hit = P.findNearest(rx, ry, PICK_RADIUS);
+        if (hit >= 0) { Panel.openFor('particle', hit); return; }
+        const bg = Body.getGroupAt(rx, ry);
+        if (bg > 0) { Panel.openFor('body', bg); return; }
+        const cg = Cond.getGroupAt(rx, ry);
+        if (cg > 0) { Panel.openFor('conductor', cg); return; }
+        const dg = Diel.getGroupAt(rx, ry);
+        if (dg > 0) { Panel.openFor('dielectric', dg); return; }
+        // Empty cell: add negative charge
+        const cx2 = clamp(rx, PARTICLE_MARGIN, NX - 1 - PARTICLE_MARGIN);
+        const cy2 = clamp(ry, PARTICLE_MARGIN, NY - 1 - PARTICLE_MARGIN);
+        const pidx = P.add(cx2, cy2, -getCharge());
+        if (ui.oscEnable) {
+          P.setOscillator(pidx, ui.oscFreq, ui.oscAmp, ui.oscAngleDeg * Math.PI / 180);
+        } else if (!ui.paused) {
+          Hand.startDrag(pidx, cx2, cy2);
+        }
+      }
+      return;
+    }
+
     if (pendingToggleGroup > 0) {
       Cond.toggleGrounded(pendingToggleGroup);
       pendingToggleGroup = 0;
@@ -263,6 +324,14 @@ export function setup(getCharge: ChargeProvider): void {
   };
   canvas.addEventListener('pointerup', release);
   canvas.addEventListener('pointercancel', release);
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const { cx, cy } = eventToCanvas(e);
+    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    Viewport.zoomAt(factor, cx, cy);
+    requestRender();
+  }, { passive: false });
 
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 }
