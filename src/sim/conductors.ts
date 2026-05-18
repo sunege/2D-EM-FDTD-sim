@@ -29,6 +29,15 @@ export function getGroupSigma(g: number): number {
   return groupSigma[g];
 }
 
+export function setGroupVoltage(g: number, v: number): void {
+  if (g <= 0 || g >= MAX_GROUPS || !groupInUse[g]) return;
+  groupVoltage[g] = v;
+}
+export function getGroupVoltage(g: number): number {
+  if (g <= 0 || g >= MAX_GROUPS) return 0;
+  return groupVoltage[g];
+}
+
 function allocGroup(): number {
   for (let g = 1; g < MAX_GROUPS; g++) {
     if (!groupInUse[g]) {

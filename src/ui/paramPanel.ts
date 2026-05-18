@@ -186,9 +186,26 @@ function populateConductor(g: number): void {
   bodyEl.appendChild(rowSlider('σ', SIGMA_CONDUCTOR_MIN, SIGMA_CONDUCTOR_MAX, 0.05, Cond.getGroupSigma(g),
     (v) => { Cond.setGroupSigma(g, v); },
     (v) => v.toFixed(2)));
-  const stateLabel = Cond.isGrounded(g) ? '接地 (固定 V=0)' : '浮遊 (等電位)';
+
+  const isFixed = Cond.isGrounded(g);
+  const V = Cond.getGroupVoltage(g);
+  let stateLabel: string;
+  if (!isFixed) {
+    stateLabel = '浮遊 (等電位)';
+  } else if (Math.abs(V) < 0.01) {
+    stateLabel = '接地 (V=0)';
+  } else {
+    stateLabel = `電圧源 (V=${V >= 0 ? '+' : ''}${V.toFixed(1)})`;
+  }
   bodyEl.appendChild(rowInfo('状態', stateLabel));
-  bodyEl.appendChild(rowButton(Cond.isGrounded(g) ? '浮遊に切替' : '接地に切替', () => {
+
+  if (isFixed) {
+    bodyEl.appendChild(rowSlider('V', -3, 3, 0.5, V,
+      (v) => { Cond.setGroupVoltage(g, v); populate(); },
+      (v) => (v >= 0 ? '+' : '') + v.toFixed(1)));
+  }
+
+  bodyEl.appendChild(rowButton(isFixed ? '浮遊に切替' : '接地に切替', () => {
     Cond.toggleGrounded(g);
     populate();
   }));

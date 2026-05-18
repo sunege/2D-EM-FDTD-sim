@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js';
 import { NX, NY, CANVAS_W, CANVAS_H } from '../config';
 import { getPhi } from '../sim/poisson';
+import { getCSSSize } from './canvas';
 
 const Z_SCALE = 30.0;
 const WIRE_STRIDE = 4;
@@ -139,6 +140,9 @@ export function show(canvas: HTMLCanvasElement): void {
   canvas.style.display = 'block'; // show before init so getBoundingClientRect() returns real size
   if (!renderer) init(canvas);
   controls.handleResize(); // refresh cached screen dimensions
+  const { w, h } = getCSSSize();
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
   if (!rafId) loop();
 }
 
@@ -151,4 +155,15 @@ export function hide(canvas: HTMLCanvasElement): void {
 export function resetCamera(): void {
   if (!renderer) return;
   controls.reset();
+}
+
+export function resize(): void {
+  if (!renderer) return;
+  renderer.setSize(CANVAS_W, CANVAS_H);
+  camera.aspect = CANVAS_W / CANVAS_H;
+  camera.updateProjectionMatrix();
+  controls.handleResize();
+  const { w, h } = getCSSSize();
+  renderer.domElement.style.width = w + 'px';
+  renderer.domElement.style.height = h + 'px';
 }

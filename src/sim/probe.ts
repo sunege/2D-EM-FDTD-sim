@@ -1,6 +1,6 @@
 import { NX, NY } from '../config';
 import { N_CELLS, idx } from './grid';
-import { ExStatic, EyStatic } from './poisson';
+import { ExStatic, EyStatic, getPhi } from './poisson';
 import { ExDisp, EyDisp, BzDisp } from '../render/highpass';
 
 // Field probes — fixed points in the grid that record time series of
@@ -16,6 +16,7 @@ const yArr = new Int16Array(MAX_PROBES);
 const bufEx = new Float32Array(MAX_PROBES * BUF_LEN);
 const bufEy = new Float32Array(MAX_PROBES * BUF_LEN);
 const bufBz = new Float32Array(MAX_PROBES * BUF_LEN);
+const bufPhi = new Float32Array(MAX_PROBES * BUF_LEN);
 let head = 0; // global write head; advances each simStep
 
 export function clear(): void {
@@ -23,6 +24,7 @@ export function clear(): void {
   bufEx.fill(0);
   bufEy.fill(0);
   bufBz.fill(0);
+  bufPhi.fill(0);
   head = 0;
 }
 
@@ -40,6 +42,7 @@ export function add(x: number, y: number): number {
         bufEx[off + n] = 0;
         bufEy[off + n] = 0;
         bufBz[off + n] = 0;
+        bufPhi[off + n] = 0;
       }
       return p;
     }
@@ -50,6 +53,12 @@ export function add(x: number, y: number): number {
 export function remove(p: number): void {
   if (p < 0 || p >= MAX_PROBES) return;
   inUse[p] = 0;
+}
+
+export function move(p: number, x: number, y: number): void {
+  if (p < 0 || p >= MAX_PROBES || !inUse[p]) return;
+  xArr[p] = Math.max(0, Math.min(NX - 1, Math.round(x)));
+  yArr[p] = Math.max(0, Math.min(NY - 1, Math.round(y)));
 }
 
 export function isUsed(p: number): boolean {
@@ -68,6 +77,9 @@ export function bufEyFor(p: number): Float32Array {
 }
 export function bufBzFor(p: number): Float32Array {
   return bufBz.subarray(p * BUF_LEN, (p + 1) * BUF_LEN);
+}
+export function bufPhiFor(p: number): Float32Array {
+  return bufPhi.subarray(p * BUF_LEN, (p + 1) * BUF_LEN);
 }
 
 // Find the probe with center closest to (x, y) within maxDist; -1 if none.
@@ -105,6 +117,7 @@ export function sample(): void {
     bufEx[off] = ExStatic[k] + ExDisp[k];
     bufEy[off] = EyStatic[k] + EyDisp[k];
     bufBz[off] = BzDisp[k];
+    bufPhi[off] = getPhi()[k];
   }
   head = (head + 1) % BUF_LEN;
 }

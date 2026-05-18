@@ -182,6 +182,79 @@
         opacity: 0.7;
         font-size: 12px;
       }
+      #chartPanel {
+        position: fixed;
+        left: 16px;
+        top: 96px;
+        width: 256px;
+        max-height: calc(100vh - 120px);
+        overflow-y: auto;
+        background: #1a1a26;
+        border: 1px solid #3a3a5a;
+        border-radius: 6px;
+        padding: 6px 0 4px;
+        z-index: 20;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+        font-size: 13px;
+        display: none;
+      }
+      .cp-row {
+        padding: 4px 8px 6px;
+        border-bottom: 1px solid #2a2a3a;
+      }
+      .cp-row:last-child { border-bottom: none; }
+      .cp-header {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        margin-bottom: 4px;
+      }
+      .cp-label {
+        font-weight: 700;
+        font-size: 12px;
+        flex-shrink: 0;
+      }
+      .cp-coord {
+        flex: 1;
+        font-size: 11px;
+        opacity: 0.55;
+        font-variant-numeric: tabular-nums;
+      }
+      .cp-close {
+        background: transparent;
+        border: none;
+        color: #778;
+        font-size: 15px;
+        line-height: 1;
+        padding: 0 2px;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      .cp-close:hover { color: #fff; background: transparent; }
+      .cp-chips {
+        display: flex;
+        gap: 3px;
+        flex-wrap: wrap;
+        margin-bottom: 4px;
+      }
+      .cp-chip {
+        background: #1e1e2e;
+        border: 1px solid #3a3a4a;
+        color: #556;
+        font-size: 10px;
+        padding: 1px 6px;
+        border-radius: 3px;
+        cursor: pointer;
+        line-height: 1.5;
+      }
+      .cp-chip:hover { border-color: #5a5a7a; color: #aab; }
+      .cp-chip.active { background: #12121e; border-color: currentColor; }
+      .cp-canvas {
+        display: block;
+        width: 100%;
+        image-rendering: auto;
+        border-radius: 2px;
+      }
     </style>
   </head>
   <body>
@@ -229,31 +302,6 @@
       </div>
       <div class="sep"></div>
       <div class="group">
-        <label for="sigma">σ</label>
-        <input type="range" id="sigma" min="0.05" max="5" step="0.05" value="0.5" />
-        <span id="sigmaVal">0.50</span>
-      </div>
-      <div class="sep"></div>
-      <div class="group">
-        <label for="epsr">εr</label>
-        <input type="range" id="epsr" min="1.0" max="4.0" step="0.1" value="2.0" />
-        <span id="epsrVal">2.0</span>
-      </div>
-      <div class="sep"></div>
-      <div class="group">
-        <label><input type="checkbox" id="oscEnable" /> 振動</label>
-        <label for="oscFreq">f</label>
-        <input type="range" id="oscFreq" min="0.01" max="0.3" step="0.005" value="0.08" />
-        <span id="oscFreqVal">0.080</span>
-        <label for="oscAmp">A</label>
-        <input type="range" id="oscAmp" min="0.5" max="20" step="0.5" value="6" />
-        <span id="oscAmpVal">6.0</span>
-        <label for="oscAngle">θ</label>
-        <input type="range" id="oscAngle" min="0" max="180" step="5" value="0" />
-        <span id="oscAngleVal">0°</span>
-      </div>
-      <div class="sep"></div>
-      <div class="group">
         <label><input type="checkbox" id="showEquipot" /> 等電位線</label>
       </div>
       <div class="sep"></div>
@@ -268,14 +316,14 @@
         <canvas id="canvas"></canvas>
         <canvas id="phi-canvas"></canvas>
       </div>
-      <canvas id="probeChart" width="640" height="160" style="margin-top:8px;background:#181822;display:none;"></canvas>
       <p class="hint">
-        既存への操作はモード非依存: 電荷/帯電体クリック→ドラッグ移動 / 導体クリック→接地↔浮遊切替 / 右クリック→パラメータパネル。
-        空白部はモードで配置: 電荷=クリック / 帯電体・導体・誘電体=形状（矩形/円/ドーナツ）をドラッグでサイズ指定 / プローブ=クリックで配置（同位置クリックで削除）/ 削除=クリックで対象を消去。
+        既存への操作はモード非依存: 電荷/帯電体クリック→ドラッグ移動 / 導体クリック→接地↔浮遊切替 / 右クリック→パラメータパネル / プローブクリック→グラフ表示切替・右クリック→削除。
+        空白部はモードで配置: 電荷=クリック / 帯電体・導体・誘電体=形状（矩形/円/ドーナツ）をドラッグでサイズ指定 / プローブ=クリックで配置 / 削除=クリックで対象を消去。
         電荷・帯電体は振動 ON で正弦振動（ダイポール放射、振動体は固定）。
         Space: 一時停止 / R: 全リセット
       </p>
     </div>
+    <div id="chartPanel"></div>
     <div id="paramPanel"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

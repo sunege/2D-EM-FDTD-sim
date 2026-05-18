@@ -25,8 +25,8 @@ import { setup as setupControls, state as ui } from './ui/controls';
 import { requestRender, consumeRender } from './ui/render-request';
 import * as Panel from './ui/paramPanel';
 
-import { canvas as mainCanvas, ctx } from './render/canvas';
-import { CANVAS_W, CANVAS_H } from './config';
+import { canvas as mainCanvas, ctx, resize as resizeCanvas, updateCSSSize } from './render/canvas';
+import { CANVAS_W, CANVAS_H, resizeToViewport } from './config';
 
 const phi3dCanvas = document.getElementById('phi-canvas') as HTMLCanvasElement;
 const phi3dBtn = document.getElementById('phi3dBtn') as HTMLButtonElement;
@@ -58,6 +58,7 @@ function reset(): void {
   Dielectric.clear();
   Body.clear();
   Probe.clear();
+  ProbeR.clearAllCharts();
   Poisson.reset();
   FDTD.reset();
   Highpass.reset();
@@ -85,6 +86,22 @@ document.addEventListener('keydown', requestRender);
 // The panel sits outside the toolbar in the DOM, so its own clicks don't
 // reach this handler.
 toolbarEl.addEventListener('mousedown', () => Panel.close());
+
+// Debounced resize: always update CSS display size, and also recompute canvas
+// pixel dimensions when PIXEL_SCALE changes.
+let _resizeTimer = 0;
+window.addEventListener('resize', () => {
+  clearTimeout(_resizeTimer);
+  _resizeTimer = window.setTimeout(() => {
+    if (resizeToViewport()) {
+      resizeCanvas(); // also calls updateCSSSize internally
+    } else {
+      updateCSSSize();
+      if (phi3dVisible) Phi3D.resize();
+    }
+    requestRender();
+  }, 100);
+});
 
 let accumulator = 0;
 

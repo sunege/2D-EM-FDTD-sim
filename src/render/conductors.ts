@@ -1,5 +1,5 @@
 import { NX, NY, CANVAS_W, CANVAS_H, PIXEL_SCALE, SIGMA_CONDUCTOR_MIN, SIGMA_CONDUCTOR_MAX } from '../config';
-import { mask, groupId, groupGrounded, getSigma, MAX_GROUPS } from '../sim/conductors';
+import { mask, groupId, groupGrounded, groupVoltage, getSigma, MAX_GROUPS } from '../sim/conductors';
 import { ctx } from './canvas';
 import { placement } from '../ui/input';
 import { getZoom } from './viewport';
@@ -23,9 +23,9 @@ function sigmaColor(sigma: number): [number, number, number] {
   return [r, g, b];
 }
 
-// Scratch buffers for per-group centroid accumulation.
+// Scratch buffers for per-group position accumulation.
 const sumXBuf = new Float32Array(MAX_GROUPS);
-const sumYBuf = new Float32Array(MAX_GROUPS);
+const maxJBuf = new Int32Array(MAX_GROUPS);
 const countBuf = new Int32Array(MAX_GROUPS);
 
 export function draw(): void {
@@ -70,7 +70,7 @@ export function draw(): void {
 
 function drawGroundSymbols(): void {
   sumXBuf.fill(0);
-  sumYBuf.fill(0);
+  maxJBuf.fill(-1);
   countBuf.fill(0);
 
   for (let j = 0; j < NY; j++) {
@@ -79,7 +79,7 @@ function drawGroundSymbols(): void {
       const g = groupId[k];
       if (g > 0 && groupGrounded[g]) {
         sumXBuf[g] += i;
-        sumYBuf[g] += j;
+        if (j > maxJBuf[g]) maxJBuf[g] = j;
         countBuf[g] += 1;
       }
     }
@@ -92,10 +92,18 @@ function drawGroundSymbols(): void {
   for (let g = 1; g < MAX_GROUPS; g++) {
     if (!groupGrounded[g] || countBuf[g] === 0) continue;
     const cxGrid = sumXBuf[g] / countBuf[g] + 0.5;
-    const cyGrid = sumYBuf[g] / countBuf[g] + 0.5;
-    // Symbol size scales with √(cell count), clamped to a usable range.
-    const sizeGrid = Math.max(2.0, Math.min(4.5, Math.sqrt(countBuf[g]) * 0.4));
-    drawGroundSymbol(cxGrid * PIXEL_SCALE, cyGrid * PIXEL_SCALE, sizeGrid * PIXEL_SCALE);
+    // Place symbol near the top of the bottom row.
+    const cyGrid = maxJBuf[g];
+    // Symbol size is half of previous: √count * 0.2, clamped to [1.0, 2.25].
+    const sizeGrid = Math.max(1.0, Math.min(2.25, Math.sqrt(countBuf[g]) * 0.2));
+    const cx = cxGrid * PIXEL_SCALE, cy = cyGrid * PIXEL_SCALE;
+    const s = sizeGrid * PIXEL_SCALE;
+    const V = groupVoltage[g];
+    if (Math.abs(V) < 0.01) {
+      drawGroundSymbol(cx, cy, s);
+    } else {
+      drawVoltageLabel(cx, cy, s, V);
+    }
   }
 
   ctx.restore();
@@ -124,6 +132,16 @@ function drawGroundSymbol(cx: number, cy: number, s: number): void {
   ctx.moveTo(cx - w3, stemBottomY + 2 * lineGap);
   ctx.lineTo(cx + w3, stemBottomY + 2 * lineGap);
   ctx.stroke();
+}
+
+function drawVoltageLabel(cx: number, cy: number, s: number, V: number): void {
+  const label = (V >= 0 ? '+' : '') + V.toFixed(1) + 'V';
+  const fontSize = Math.max(8, s * 0.85);
+  ctx.font = `bold ${fontSize}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(15,15,25,0.95)';
+  ctx.fillText(label, cx, cy);
 }
 
 export function drawPreview(): void {

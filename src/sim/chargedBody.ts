@@ -42,7 +42,7 @@ const phaseArr = new Float32Array(MAX_GROUPS);
 const eqXArr = new Float32Array(MAX_GROUPS);
 const eqYArr = new Float32Array(MAX_GROUPS);
 
-export const drag = { groupId: 0, targetX: 0, targetY: 0 };
+export const drag = { groupId: 0, targetX: 0, targetY: 0, offsetX: 0, offsetY: 0 };
 
 function allocGroup(): number {
   for (let g = 1; g < MAX_GROUPS; g++) {
@@ -169,17 +169,6 @@ export function addRect(x1: number, y1: number, x2: number, y2: number, totalQ: 
   return g;
 }
 
-function bboxRadius(g: number): number {
-  switch (shape[g]) {
-    case Shape.Disk:
-    case Shape.Annulus:
-      return param1[g];
-    case Shape.Rect:
-      return Math.max(param1[g], param2[g]);
-    default:
-      return 0;
-  }
-}
 
 function pointInside(g: number, x: number, y: number): boolean {
   const dx = x - cxArr[g], dy = y - cyArr[g];
@@ -215,6 +204,8 @@ export function startDrag(g: number, tx: number, ty: number): void {
   drag.groupId = g;
   drag.targetX = tx;
   drag.targetY = ty;
+  drag.offsetX = tx - cxArr[g];
+  drag.offsetY = ty - cyArr[g];
 }
 
 export function isOscillating(g: number): boolean {
@@ -260,8 +251,8 @@ export function step(): void {
     // Non-oscillating: drag-driven motion (mirrors godhand for particles).
     let ax = 0, ay = 0;
     if (drag.groupId === g) {
-      ax = K_DRAG * (drag.targetX - cxArr[g]) - K_DAMP * vxArr[g];
-      ay = K_DRAG * (drag.targetY - cyArr[g]) - K_DAMP * vyArr[g];
+      ax = K_DRAG * (drag.targetX - drag.offsetX - cxArr[g]) - K_DAMP * vxArr[g];
+      ay = K_DRAG * (drag.targetY - drag.offsetY - cyArr[g]) - K_DAMP * vyArr[g];
     }
     vxArr[g] += ax * DT;
     vyArr[g] += ay * DT;
@@ -276,10 +267,12 @@ export function step(): void {
     cyArr[g] += vyArr[g] * DT;
 
     // Keep the bounding box of the body on-grid (with 1-cell padding so the
-    // boundary cells stay free for Mur ABC).
-    const m = bboxRadius(g) + 1;
-    const loX = m, hiX = NX - 1 - m;
-    const loY = m, hiY = NY - 1 - m;
+    // boundary cells stay free for Mur ABC). Use per-axis extents so a long
+    // thin rect isn't over-clamped by the other axis's half-length.
+    const extX = param1[g] + 1;  // halfW for rect, radius for disk/annulus
+    const extY = (shape[g] === Shape.Rect ? param2[g] : param1[g]) + 1;
+    const loX = extX, hiX = NX - 1 - extX;
+    const loY = extY, hiY = NY - 1 - extY;
     if (cxArr[g] < loX) { cxArr[g] = loX; vxArr[g] = 0; }
     if (cxArr[g] > hiX) { cxArr[g] = hiX; vxArr[g] = 0; }
     if (cyArr[g] < loY) { cyArr[g] = loY; vyArr[g] = 0; }

@@ -5,6 +5,7 @@ import * as Diel from '../sim/dielectric';
 import * as Body from '../sim/chargedBody';
 import * as Probe from '../sim/probe';
 import * as Panel from './paramPanel';
+import { toggleChart, closeChartFor } from '../render/probeChart';
 import { canvas, canvasToGrid } from '../render/canvas';
 import * as Viewport from '../render/viewport';
 import { NX, NY, PARTICLE_MARGIN } from '../config';
@@ -33,18 +34,13 @@ function finalizePlacement(): void {
   const kind = placement.material;
   const er = placement.epsR;
   const Q = placement.charge;
-  const applyOsc = (g: number): void => {
-    if (g > 0 && ui.oscEnable) {
-      Body.setOscillator(g, ui.oscFreq, ui.oscAmp, ui.oscAngleDeg * Math.PI / 180);
-    }
-  };
   switch (placement.shape) {
     case 'disk': {
       const r = Math.hypot(bx - ax, by - ay);
       if (r < 0.5) break;
       if (kind === 'conductor') Cond.addDisk(ax, ay, r);
       else if (kind === 'dielectric') Diel.addDisk(ax, ay, r, er);
-      else applyOsc(Body.addDisk(ax, ay, r, Q));
+      else Body.addDisk(ax, ay, r, Q);
       break;
     }
     case 'annulus': {
@@ -52,14 +48,14 @@ function finalizePlacement(): void {
       if (rOuter < 1) break;
       if (kind === 'conductor') Cond.addAnnulus(ax, ay, rOuter, rOuter * 0.5);
       else if (kind === 'dielectric') Diel.addAnnulus(ax, ay, rOuter, rOuter * 0.5, er);
-      else applyOsc(Body.addAnnulus(ax, ay, rOuter, rOuter * 0.5, Q));
+      else Body.addAnnulus(ax, ay, rOuter, rOuter * 0.5, Q);
       break;
     }
     case 'rect': {
       if (Math.abs(bx - ax) < 0.5 || Math.abs(by - ay) < 0.5) break;
       if (kind === 'conductor') Cond.addRect(ax, ay, bx, by);
       else if (kind === 'dielectric') Diel.addRect(ax, ay, bx, by, er);
-      else applyOsc(Body.addRect(ax, ay, bx, by, Q));
+      else Body.addRect(ax, ay, bx, by, Q);
       break;
     }
   }
@@ -72,6 +68,11 @@ const TOGGLE_DRAG_THRESHOLD = 2.0; // grid cells
 
 let pendingToggleGroup = 0;
 const pendingDown = { x: 0, y: 0 };
+
+// Click-vs-drag discrimination on probes: small move = toggle chart, large move = reposition.
+let pendingProbe = -1;
+let probeDragActive = -1;
+const probeDragDown = { x: 0, y: 0 };
 
 function isShapeMode(): boolean {
   return ui.mode === 'conductor' || ui.mode === 'dielectric' || ui.mode === 'body';
@@ -120,7 +121,7 @@ export function setup(getCharge: ChargeProvider): void {
   const eraseAt = (x: number, y: number): void => {
     // Priority: probe > particle > body > conductor > dielectric
     const probeHit = Probe.findNearest(x, y, PICK_RADIUS);
-    if (probeHit >= 0) { Probe.remove(probeHit); return; }
+    if (probeHit >= 0) { closeChartFor(probeHit); Probe.remove(probeHit); return; }
     const hit = P.findNearest(x, y, PICK_RADIUS);
     if (hit >= 0) { Panel.closeIfFor('particle', hit); P.remove(hit); return; }
     const bg = Body.getGroupAt(x, y);
@@ -158,12 +159,12 @@ export function setup(getCharge: ChargeProvider): void {
       return;
     }
 
-    // Universal: click on existing probe → remove it (any mode). Probes are
-    // checked before other entities so clicking the pin always toggles it off.
+    // Universal: left-click on existing probe → defer to distinguish click vs drag.
     if (e.button === 0) {
       const probeHit = Probe.findNearest(rx, ry, PICK_RADIUS);
       if (probeHit >= 0) {
-        Probe.remove(probeHit);
+        pendingProbe = probeHit;
+        probeDragDown.x = rx; probeDragDown.y = ry;
         return;
       }
     }
@@ -214,11 +215,6 @@ export function setup(getCharge: ChargeProvider): void {
     const { x: cx, y: cy } = eventToGrid(e, PARTICLE_MARGIN);
     const q = e.button === 2 ? -getCharge() : getCharge();
     const pidx = P.add(cx, cy, q);
-    if (ui.oscEnable) {
-      // Oscillating particle: pin at placement point, no drag.
-      P.setOscillator(pidx, ui.oscFreq, ui.oscAmp, ui.oscAngleDeg * Math.PI / 180);
-      return;
-    }
     if (ui.paused) return;
     Hand.startDrag(pidx, cx, cy);
   });
@@ -239,6 +235,20 @@ export function setup(getCharge: ChargeProvider): void {
       rightLastCx = cx;
       rightLastCy = cy;
       if (rightDragging) return;
+    }
+
+    // Probe: promote pending to drag if moved past threshold, then update position.
+    if (pendingProbe >= 0 || probeDragActive >= 0) {
+      const { x, y } = eventToGrid(e, 0);
+      if (pendingProbe >= 0 && Math.hypot(x - probeDragDown.x, y - probeDragDown.y) > TOGGLE_DRAG_THRESHOLD) {
+        probeDragActive = pendingProbe;
+        pendingProbe = -1;
+      }
+      if (probeDragActive >= 0) {
+        Probe.move(probeDragActive, x, y);
+        requestRender();
+      }
+      return;
     }
 
     if (ui.mode === 'erase') {
@@ -290,6 +300,8 @@ export function setup(getCharge: ChargeProvider): void {
       if (!wasDragging && e.type !== 'pointercancel') {
         // Short right-click: execute panel/charge action
         const rx = rightGrid.x, ry = rightGrid.y;
+        const probeHit = Probe.findNearest(rx, ry, PICK_RADIUS);
+        if (probeHit >= 0) { closeChartFor(probeHit); Probe.remove(probeHit); requestRender(); return; }
         const hit = P.findNearest(rx, ry, PICK_RADIUS);
         if (hit >= 0) { Panel.openFor('particle', hit); return; }
         const bg = Body.getGroupAt(rx, ry);
@@ -298,18 +310,21 @@ export function setup(getCharge: ChargeProvider): void {
         if (cg > 0) { Panel.openFor('conductor', cg); return; }
         const dg = Diel.getGroupAt(rx, ry);
         if (dg > 0) { Panel.openFor('dielectric', dg); return; }
-        // Empty cell: add negative charge
+        // Empty cell: add negative charge (no drag — right button already released)
         const cx2 = clamp(rx, PARTICLE_MARGIN, NX - 1 - PARTICLE_MARGIN);
         const cy2 = clamp(ry, PARTICLE_MARGIN, NY - 1 - PARTICLE_MARGIN);
-        const pidx = P.add(cx2, cy2, -getCharge());
-        if (ui.oscEnable) {
-          P.setOscillator(pidx, ui.oscFreq, ui.oscAmp, ui.oscAngleDeg * Math.PI / 180);
-        } else if (!ui.paused) {
-          Hand.startDrag(pidx, cx2, cy2);
-        }
+        P.add(cx2, cy2, -getCharge());
       }
       return;
     }
+
+    // Probe: short click → toggle chart; drag already handled in pointermove.
+    if (pendingProbe >= 0 && e.type !== 'pointercancel') {
+      toggleChart(pendingProbe);
+      requestRender();
+    }
+    pendingProbe = -1;
+    probeDragActive = -1;
 
     if (pendingToggleGroup > 0) {
       Cond.toggleGrounded(pendingToggleGroup);

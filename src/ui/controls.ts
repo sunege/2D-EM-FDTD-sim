@@ -17,7 +17,6 @@ export const state = {
   shape: 'rect' as Shape,
   sigma: SIGMA_CONDUCTOR_DEFAULT,
   epsR: EPS_R_DEFAULT,
-  oscEnable: false,
   oscFreq: 0.08,
   oscAmp: 6.0,
   oscAngleDeg: 0,
@@ -104,18 +103,6 @@ export function setup(onReset: ResetHandler): void {
     annulus: document.getElementById('shapeAnnulus') as HTMLButtonElement,
   };
 
-  const sigmaEl = document.getElementById('sigma') as HTMLInputElement;
-  const sigmaVal = document.getElementById('sigmaVal') as HTMLSpanElement;
-  const epsrEl = document.getElementById('epsr') as HTMLInputElement;
-  const epsrVal = document.getElementById('epsrVal') as HTMLSpanElement;
-
-  const oscEnableEl = document.getElementById('oscEnable') as HTMLInputElement;
-  const oscFreqEl = document.getElementById('oscFreq') as HTMLInputElement;
-  const oscFreqVal = document.getElementById('oscFreqVal') as HTMLSpanElement;
-  const oscAmpEl = document.getElementById('oscAmp') as HTMLInputElement;
-  const oscAmpVal = document.getElementById('oscAmpVal') as HTMLSpanElement;
-  const oscAngleEl = document.getElementById('oscAngle') as HTMLInputElement;
-  const oscAngleVal = document.getElementById('oscAngleVal') as HTMLSpanElement;
   const showEquipotEl = document.getElementById('showEquipot') as HTMLInputElement;
 
   const refreshModeAffordances = (): void => {
@@ -125,14 +112,6 @@ export function setup(onReset: ResetHandler): void {
     (Object.keys(shapeBtns) as Shape[]).forEach((k) => {
       shapeBtns[k].disabled = !shapeNeeded;
     });
-    sigmaEl.disabled = state.mode !== 'conductor';
-    epsrEl.disabled = state.mode !== 'dielectric';
-    const oscActive = state.mode === 'body' || state.mode === 'charge';
-    oscEnableEl.disabled = !oscActive;
-    const oscRunnable = oscActive && state.oscEnable;
-    oscFreqEl.disabled = !oscRunnable;
-    oscAmpEl.disabled = !oscRunnable;
-    oscAngleEl.disabled = !oscRunnable;
   };
 
   const setMode = (m: Mode): void => {
@@ -156,49 +135,7 @@ export function setup(onReset: ResetHandler): void {
     shapeBtns[s].addEventListener('click', () => setShape(s));
   });
 
-  const updateSigma = (): void => {
-    const v = parseFloat(sigmaEl.value);
-    state.sigma = v;
-    sigmaVal.textContent = v.toFixed(2);
-    Cond.setSigma(v);
-  };
-  sigmaEl.value = String(SIGMA_CONDUCTOR_DEFAULT);
-  updateSigma();
-  sigmaEl.addEventListener('input', updateSigma);
-
-  const updateEpsr = (): void => {
-    const v = parseFloat(epsrEl.value);
-    state.epsR = v;
-    epsrVal.textContent = v.toFixed(1);
-  };
-  epsrEl.value = String(EPS_R_DEFAULT);
-  updateEpsr();
-  epsrEl.addEventListener('input', updateEpsr);
-
-  // Oscillator controls
-  state.oscEnable = oscEnableEl.checked;
-  oscEnableEl.addEventListener('change', () => {
-    state.oscEnable = oscEnableEl.checked;
-    refreshModeAffordances();
-  });
-  const updateOscFreq = (): void => {
-    state.oscFreq = parseFloat(oscFreqEl.value);
-    oscFreqVal.textContent = state.oscFreq.toFixed(3);
-  };
-  updateOscFreq();
-  oscFreqEl.addEventListener('input', updateOscFreq);
-  const updateOscAmp = (): void => {
-    state.oscAmp = parseFloat(oscAmpEl.value);
-    oscAmpVal.textContent = state.oscAmp.toFixed(1);
-  };
-  updateOscAmp();
-  oscAmpEl.addEventListener('input', updateOscAmp);
-  const updateOscAngle = (): void => {
-    state.oscAngleDeg = parseFloat(oscAngleEl.value);
-    oscAngleVal.textContent = `${state.oscAngleDeg.toFixed(0)}°`;
-  };
-  updateOscAngle();
-  oscAngleEl.addEventListener('input', updateOscAngle);
+  Cond.setSigma(state.sigma);
 
   // Equipotential toggle
   state.showEquipot = showEquipotEl.checked;
