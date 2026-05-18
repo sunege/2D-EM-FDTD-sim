@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "grid": { "nx": 224, "ny": 128 },
+  "particles": [
+    { "x": 80, "y": 64, "q": 6, "oscillator": null }
+  ],
+  "bodies": [],
+  "conductors": [],
+  "dielectrics": [
+    {
+      "shapes": [
+        { "kind": "rect", "x0": 120, "y0": 0, "x1": 223, "y1": 127, "epsR": 3.0 }
+      ]
+    }
+  ],
+  "probes": [],
+  "ui": {
+    "showStatic": true,
+    "showWave": false,
+    "highpass": true,
+    "showEquipot": true
+  }
+}

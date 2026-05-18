@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "grid": { "nx": 224, "ny": 128 },
+  "particles": [
+    {
+      "x": 90,
+      "y": 64,
+      "q": 5,
+      "oscillator": { "omega": 0.20, "amp": 3, "angleDeg": 90 }
+    },
+    {
+      "x": 134,
+      "y": 64,
+      "q": 5,
+      "oscillator": { "omega": 0.20, "amp": 3, "angleDeg": 90 }
+    }
+  ],
+  "bodies": [],
+  "conductors": [],
+  "dielectrics": [],
+  "probes": [
+    { "x": 200, "y": 64 },
+    { "x": 200, "y": 95 }
+  ],
+  "ui": {
+    "showStatic": false,
+    "showWave": true,
+    "highpass": true,
+    "showEquipot": false
+  }
+}

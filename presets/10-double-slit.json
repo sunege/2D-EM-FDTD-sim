@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "grid": { "nx": 224, "ny": 128 },
+  "particles": [
+    {
+      "x": 35,
+      "y": 64,
+      "q": 5,
+      "oscillator": { "omega": 0.25, "amp": 2.5, "angleDeg": 90 }
+    }
+  ],
+  "bodies": [],
+  "conductors": [
+    {
+      "shapes": [
+        { "kind": "rect", "x0": 78, "y0": 0, "x1": 82, "y1": 42 }
+      ],
+      "grounded": true,
+      "sigma": 2.5
+    },
+    {
+      "shapes": [
+        { "kind": "rect", "x0": 78, "y0": 54, "x1": 82, "y1": 74 }
+      ],
+      "grounded": true,
+      "sigma": 2.5
+    },
+    {
+      "shapes": [
+        { "kind": "rect", "x0": 78, "y0": 86, "x1": 82, "y1": 127 }
+      ],
+      "grounded": true,
+      "sigma": 2.5
+    }
+  ],
+  "dielectrics": [],
+  "probes": [
+    { "x": 200, "y": 64 },
+    { "x": 200, "y": 105 }
+  ],
+  "ui": {
+    "showStatic": false,
+    "showWave": true,
+    "highpass": true,
+    "showEquipot": false
+  }
+}

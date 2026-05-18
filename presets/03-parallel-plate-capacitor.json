@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "grid": { "nx": 224, "ny": 128 },
+  "particles": [],
+  "bodies": [
+    {
+      "shape": { "kind": "rect", "cx": 112, "cy": 44, "halfW": 50, "halfH": 2 },
+      "Q": 5,
+      "oscillator": null
+    },
+    {
+      "shape": { "kind": "rect", "cx": 112, "cy": 84, "halfW": 50, "halfH": 2 },
+      "Q": -5,
+      "oscillator": null
+    }
+  ],
+  "conductors": [],
+  "dielectrics": [],
+  "probes": [],
+  "ui": {
+    "showStatic": true,
+    "showWave": false,
+    "highpass": true,
+    "showEquipot": true
+  }
+}
