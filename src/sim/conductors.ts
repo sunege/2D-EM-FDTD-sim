@@ -15,6 +15,18 @@ export const groupVoltage = new Float32Array(MAX_GROUPS); // grounded: target V;
 // existing groups. FDTD reads this via Cond.groupSigma[Cond.groupId[k]].
 export const groupSigma = new Float32Array(MAX_GROUPS);
 
+// Per-group shape history — list of placements that constitute this group.
+// Used by scene serialization (resolution-independent re-application).
+export type ConductorShape =
+  | { kind: 'disk'; cx: number; cy: number; r: number }
+  | { kind: 'annulus'; cx: number; cy: number; rOuter: number; rInner: number }
+  | { kind: 'rect'; x0: number; y0: number; x1: number; y1: number };
+const groupShapes: ConductorShape[][] = Array.from({ length: MAX_GROUPS }, () => []);
+export function getGroupShapes(g: number): ConductorShape[] {
+  if (g <= 0 || g >= MAX_GROUPS || !groupInUse[g]) return [];
+  return groupShapes[g];
+}
+
 let sigmaDefault = SIGMA_CONDUCTOR_DEFAULT;
 
 export function setSigma(s: number): void { sigmaDefault = s; }
@@ -58,6 +70,7 @@ export function clear(): void {
   groupGrounded.fill(0);
   groupVoltage.fill(0);
   groupSigma.fill(0);
+  for (let g = 0; g < MAX_GROUPS; g++) groupShapes[g] = [];
 }
 
 export function removeGroup(g: number): void {
@@ -72,10 +85,18 @@ export function removeGroup(g: number): void {
   groupGrounded[g] = 0;
   groupVoltage[g] = 0;
   groupSigma[g] = 0;
+  groupShapes[g] = [];
 }
 
 export function isInUse(g: number): boolean {
   return g > 0 && g < MAX_GROUPS && groupInUse[g] === 1;
+}
+
+// Enumerate all currently allocated group IDs (in ascending order).
+export function getActiveGroupIds(): number[] {
+  const out: number[] = [];
+  for (let g = 1; g < MAX_GROUPS; g++) if (groupInUse[g]) out.push(g);
+  return out;
 }
 
 function findExistingGroupDisk(cx: number, cy: number, r2: number, i0: number, i1: number, j0: number, j1: number): number {
@@ -139,6 +160,7 @@ export function addDisk(cx: number, cy: number, r: number): number {
       }
     }
   }
+  groupShapes[g].push({ kind: 'disk', cx, cy, r });
   return g;
 }
 
@@ -166,6 +188,7 @@ export function addAnnulus(cx: number, cy: number, rOuter: number, rInner: numbe
       }
     }
   }
+  groupShapes[g].push({ kind: 'annulus', cx, cy, rOuter, rInner });
   return g;
 }
 
@@ -188,6 +211,7 @@ export function addRect(x1: number, y1: number, x2: number, y2: number): number 
       groupId[k] = g;
     }
   }
+  groupShapes[g].push({ kind: 'rect', x0: x1, y0: y1, x1: x2, y1: y2 });
   return g;
 }
 

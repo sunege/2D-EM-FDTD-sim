@@ -21,9 +21,12 @@ import * as ProbeR from './render/probeChart';
 import * as Viewport from './render/viewport';
 
 import { setup as setupInput } from './ui/input';
-import { setup as setupControls, state as ui } from './ui/controls';
+import { setup as setupControls, state as ui, applyUIToggles, setMode } from './ui/controls';
 import { requestRender, consumeRender } from './ui/render-request';
 import * as Panel from './ui/paramPanel';
+import * as Scene from './sim/scene';
+import * as History from './sim/history';
+import { setupPresets } from './ui/presets';
 
 import { canvas as mainCanvas, ctx, resize as resizeCanvas, updateCSSSize } from './render/canvas';
 import { CANVAS_W, CANVAS_H, resizeToViewport } from './config';
@@ -67,7 +70,86 @@ function reset(): void {
 }
 
 setupInput(() => ui.charge);
-setupControls(reset);
+// User-facing reset (Reset button / R key) clears history as a side effect —
+// undo across a hard reset would be confusing. The plain `reset` is still
+// used by Scene.deserialize and History.undo/redo, which must NOT clear
+// history.
+setupControls(() => { reset(); History.reset(); });
+
+// Scene save/load
+const saveBtn = document.getElementById('saveBtn') as HTMLButtonElement;
+const loadBtn = document.getElementById('loadBtn') as HTMLButtonElement;
+const loadFile = document.getElementById('loadFile') as HTMLInputElement;
+
+saveBtn.addEventListener('click', () => {
+  const json = JSON.stringify(Scene.serialize(), null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  a.href = url;
+  a.download = `scene-${ts}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+function loadScene(data: unknown): void {
+  try {
+    const { warnings } = Scene.deserialize(data as Scene.SceneJSON, reset);
+    applyUIToggles();
+    // Reset interaction mode to the safe default. Without this, if the user
+    // was in 'erase' mode before loading, the very next click would delete
+    // a preset-placed object instead of dragging/toggling it.
+    setMode('charge');
+    // Newly loaded scene = new baseline; discard prior undo history.
+    History.reset();
+    requestRender();
+    if (warnings.length > 0) alert(warnings.join('\n'));
+  } catch (err) {
+    alert(`読込に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+loadBtn.addEventListener('click', () => loadFile.click());
+loadFile.addEventListener('change', () => {
+  const f = loadFile.files?.[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      loadScene(JSON.parse(String(reader.result)));
+    } catch (err) {
+      alert(`読込に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      loadFile.value = ''; // allow re-loading the same file
+    }
+  };
+  reader.readAsText(f);
+});
+
+setupPresets(loadScene);
+
+// Undo/redo. Bound after setupControls so its own keyboard handler (Space/R)
+// runs first; we only intercept Ctrl/Cmd-modified combos which it ignores.
+document.addEventListener('keydown', (e) => {
+  if ((e.target as Element).tagName === 'INPUT') return;
+  if (!(e.ctrlKey || e.metaKey)) return;
+  const isUndo = e.code === 'KeyZ' && !e.shiftKey;
+  const isRedo = e.code === 'KeyY' || (e.code === 'KeyZ' && e.shiftKey);
+  if (!isUndo && !isRedo) return;
+  e.preventDefault();
+  const ok = isUndo ? History.undo(reset) : History.redo(reset);
+  if (!ok) return;
+  applyUIToggles();
+  setMode('charge');
+  requestRender();
+});
+
+// Initial baseline: capture the empty post-boot scene as the "before any
+// action" snapshot so the first commit() has something to push.
+History.reset();
 
 // Invalidate the paused-render cache on any UI event that might change state.
 // Listeners registered after setupInput/setupControls so the state-changing

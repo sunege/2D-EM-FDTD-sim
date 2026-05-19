@@ -27,7 +27,7 @@ const TRACES: TraceConfig[] = [
   { key: 'Bz', label: 'Bz',  color: 'rgba(200,150,250,1)',  plotColor: 'rgba(200,150,250,0.95)' },
   { key: 'S',  label: '|S|', color: 'rgba(255,160,60,1)',   plotColor: 'rgba(255,160,60,0.95)'  },
   { key: 'u',  label: 'u',   color: 'rgba(255,100,100,1)', plotColor: 'rgba(255,100,100,0.95)' },
-  { key: 'phi', label: 'φ',  color: 'rgba(80,210,255,1)',  plotColor: 'rgba(80,210,255,0.95)'  },
+  { key: 'phi', label: 'V',  color: 'rgba(80,210,255,1)',  plotColor: 'rgba(80,210,255,0.95)'  },
 ];
 
 const chartPanel = document.getElementById('chartPanel') as HTMLDivElement;
@@ -262,7 +262,7 @@ function drawProbeRow(ctx: CanvasRenderingContext2D, W: number, H: number, p: nu
   if (ts.has('Bz'))  activeTraces.push({ label: 'Bz',  max: maxBz,  plotColor: TRACES[1].plotColor });
   if (ts.has('S'))   activeTraces.push({ label: '|S|', max: maxS,   plotColor: TRACES[2].plotColor });
   if (ts.has('u'))   activeTraces.push({ label: 'u',   max: maxU,   plotColor: TRACES[3].plotColor });
-  if (ts.has('phi')) activeTraces.push({ label: 'φ',   max: maxPhi, plotColor: TRACES[4].plotColor });
+  if (ts.has('phi')) activeTraces.push({ label: 'V',   max: maxPhi, plotColor: TRACES[4].plotColor });
   for (let i = 0; i < activeTraces.length; i++) {
     const { label, max, plotColor } = activeTraces[i];
     ctx.fillStyle = plotColor.replace('0.95', '0.9');

@@ -5,6 +5,7 @@ import * as Diel from '../sim/dielectric';
 import * as Body from '../sim/chargedBody';
 import * as Probe from '../sim/probe';
 import * as Panel from './paramPanel';
+import * as History from '../sim/history';
 import { toggleChart, closeChartFor } from '../render/probeChart';
 import { canvas, canvasToGrid } from '../render/canvas';
 import * as Viewport from '../render/viewport';
@@ -28,7 +29,8 @@ export const placement = {
   current: { x: 0, y: 0 },
 };
 
-function finalizePlacement(): void {
+// Returns true if a shape was actually added (size threshold met).
+function finalizePlacement(): boolean {
   const ax = placement.anchor.x, ay = placement.anchor.y;
   const bx = placement.current.x, by = placement.current.y;
   const kind = placement.material;
@@ -37,28 +39,29 @@ function finalizePlacement(): void {
   switch (placement.shape) {
     case 'disk': {
       const r = Math.hypot(bx - ax, by - ay);
-      if (r < 0.5) break;
+      if (r < 0.5) return false;
       if (kind === 'conductor') Cond.addDisk(ax, ay, r);
       else if (kind === 'dielectric') Diel.addDisk(ax, ay, r, er);
       else Body.addDisk(ax, ay, r, Q);
-      break;
+      return true;
     }
     case 'annulus': {
       const rOuter = Math.hypot(bx - ax, by - ay);
-      if (rOuter < 1) break;
+      if (rOuter < 1) return false;
       if (kind === 'conductor') Cond.addAnnulus(ax, ay, rOuter, rOuter * 0.5);
       else if (kind === 'dielectric') Diel.addAnnulus(ax, ay, rOuter, rOuter * 0.5, er);
       else Body.addAnnulus(ax, ay, rOuter, rOuter * 0.5, Q);
-      break;
+      return true;
     }
     case 'rect': {
-      if (Math.abs(bx - ax) < 0.5 || Math.abs(by - ay) < 0.5) break;
+      if (Math.abs(bx - ax) < 0.5 || Math.abs(by - ay) < 0.5) return false;
       if (kind === 'conductor') Cond.addRect(ax, ay, bx, by);
       else if (kind === 'dielectric') Diel.addRect(ax, ay, bx, by, er);
       else Body.addRect(ax, ay, bx, by, Q);
-      break;
+      return true;
     }
   }
+  return false;
 }
 
 // Click-vs-drag discrimination on existing conductors: a press stays "pending"
@@ -121,15 +124,15 @@ export function setup(getCharge: ChargeProvider): void {
   const eraseAt = (x: number, y: number): void => {
     // Priority: probe > particle > body > conductor > dielectric
     const probeHit = Probe.findNearest(x, y, PICK_RADIUS);
-    if (probeHit >= 0) { closeChartFor(probeHit); Probe.remove(probeHit); return; }
+    if (probeHit >= 0) { closeChartFor(probeHit); Probe.remove(probeHit); History.commit(); return; }
     const hit = P.findNearest(x, y, PICK_RADIUS);
-    if (hit >= 0) { Panel.closeIfFor('particle', hit); P.remove(hit); return; }
+    if (hit >= 0) { Panel.closeIfFor('particle', hit); P.remove(hit); History.commit(); return; }
     const bg = Body.getGroupAt(x, y);
-    if (bg > 0) { Panel.closeIfFor('body', bg); Body.removeGroup(bg); return; }
+    if (bg > 0) { Panel.closeIfFor('body', bg); Body.removeGroup(bg); History.commit(); return; }
     const cg = Cond.getGroupAt(x, y);
-    if (cg > 0) { Panel.closeIfFor('conductor', cg); Cond.removeGroup(cg); return; }
+    if (cg > 0) { Panel.closeIfFor('conductor', cg); Cond.removeGroup(cg); History.commit(); return; }
     const dg = Diel.getGroupAt(x, y);
-    if (dg > 0) { Panel.closeIfFor('dielectric', dg); Diel.removeGroup(dg); return; }
+    if (dg > 0) { Panel.closeIfFor('dielectric', dg); Diel.removeGroup(dg); History.commit(); return; }
   };
 
   canvas.addEventListener('pointerdown', (e) => {
@@ -202,6 +205,7 @@ export function setup(getCharge: ChargeProvider): void {
     // Probe mode: add a probe at the click point.
     if (ui.mode === 'probe' && e.button === 0) {
       Probe.add(rx, ry);
+      History.commit();
       return;
     }
 
@@ -215,6 +219,7 @@ export function setup(getCharge: ChargeProvider): void {
     const { x: cx, y: cy } = eventToGrid(e, PARTICLE_MARGIN);
     const q = e.button === 2 ? -getCharge() : getCharge();
     const pidx = P.add(cx, cy, q);
+    History.commit();
     if (ui.paused) return;
     Hand.startDrag(pidx, cx, cy);
   });
@@ -301,7 +306,7 @@ export function setup(getCharge: ChargeProvider): void {
         // Short right-click: execute panel/charge action
         const rx = rightGrid.x, ry = rightGrid.y;
         const probeHit = Probe.findNearest(rx, ry, PICK_RADIUS);
-        if (probeHit >= 0) { closeChartFor(probeHit); Probe.remove(probeHit); requestRender(); return; }
+        if (probeHit >= 0) { closeChartFor(probeHit); Probe.remove(probeHit); History.commit(); requestRender(); return; }
         const hit = P.findNearest(rx, ry, PICK_RADIUS);
         if (hit >= 0) { Panel.openFor('particle', hit); return; }
         const bg = Body.getGroupAt(rx, ry);
@@ -314,6 +319,7 @@ export function setup(getCharge: ChargeProvider): void {
         const cx2 = clamp(rx, PARTICLE_MARGIN, NX - 1 - PARTICLE_MARGIN);
         const cy2 = clamp(ry, PARTICLE_MARGIN, NY - 1 - PARTICLE_MARGIN);
         P.add(cx2, cy2, -getCharge());
+        History.commit();
       }
       return;
     }
@@ -329,10 +335,12 @@ export function setup(getCharge: ChargeProvider): void {
     if (pendingToggleGroup > 0) {
       Cond.toggleGrounded(pendingToggleGroup);
       pendingToggleGroup = 0;
+      History.commit();
     }
     if (placement.active) {
-      finalizePlacement();
+      const placed = finalizePlacement();
       placement.active = false;
+      if (placed) History.commit();
     }
     Hand.endDrag();
     Body.endDrag();

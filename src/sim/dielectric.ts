@@ -11,6 +11,24 @@ export const groupId = new Int16Array(N_CELLS);
 export const MAX_GROUPS = 256;
 const groupInUse = new Uint8Array(MAX_GROUPS);
 
+// Per-group shape history (with per-shape ε_r — overlapping placements can
+// have different ε_r values that overwrite earlier ones cell-by-cell, so we
+// record each placement individually for faithful replay).
+export type DielectricShape =
+  | { kind: 'disk'; cx: number; cy: number; r: number; epsR: number }
+  | { kind: 'annulus'; cx: number; cy: number; rOuter: number; rInner: number; epsR: number }
+  | { kind: 'rect'; x0: number; y0: number; x1: number; y1: number; epsR: number };
+const groupShapes: DielectricShape[][] = Array.from({ length: MAX_GROUPS }, () => []);
+export function getGroupShapes(g: number): DielectricShape[] {
+  if (g <= 0 || g >= MAX_GROUPS || !groupInUse[g]) return [];
+  return groupShapes[g];
+}
+export function getActiveGroupIds(): number[] {
+  const out: number[] = [];
+  for (let g = 1; g < MAX_GROUPS; g++) if (groupInUse[g]) out.push(g);
+  return out;
+}
+
 // Bumped whenever `eps` changes (placement/remove/clear). Consumers cache
 // derived quantities (e.g. Poisson face-ε / 1/Σε) and rebuild on mismatch.
 let version = 0;
@@ -35,6 +53,7 @@ export function clear(): void {
   eps.fill(1.0);
   groupId.fill(0);
   groupInUse.fill(0);
+  for (let g = 0; g < MAX_GROUPS; g++) groupShapes[g] = [];
   bump();
 }
 
@@ -44,13 +63,16 @@ export function isInUse(g: number): boolean {
 
 // Update ε_r for every cell of group g and bump the version so Poisson's
 // coefficient cache rebuilds on the next solve. Value is clamped to the
-// allowed range.
+// allowed range. Also rewrites the per-shape ε_r in the group's shape history
+// so subsequent serialization reflects the user's edit.
 export function setGroupEpsilon(g: number, value: number): void {
   if (!isInUse(g)) return;
   const e = clampEr(value);
   for (let k = 0; k < N_CELLS; k++) {
     if (groupId[k] === g) eps[k] = e;
   }
+  const shapes = groupShapes[g];
+  for (let s = 0; s < shapes.length; s++) shapes[s].epsR = e;
   bump();
 }
 
@@ -73,6 +95,7 @@ export function removeGroup(g: number): void {
     }
   }
   groupInUse[g] = 0;
+  groupShapes[g] = [];
   bump();
 }
 
@@ -144,6 +167,7 @@ export function addDisk(cx: number, cy: number, r: number, value: number): numbe
       }
     }
   }
+  groupShapes[g].push({ kind: 'disk', cx, cy, r, epsR: e });
   bump();
   return g;
 }
@@ -173,6 +197,7 @@ export function addAnnulus(cx: number, cy: number, rOuter: number, rInner: numbe
       }
     }
   }
+  groupShapes[g].push({ kind: 'annulus', cx, cy, rOuter, rInner, epsR: e });
   bump();
   return g;
 }
@@ -197,6 +222,7 @@ export function addRect(x1: number, y1: number, x2: number, y2: number, value: n
       groupId[k] = g;
     }
   }
+  groupShapes[g].push({ kind: 'rect', x0: x1, y0: y1, x1: x2, y1: y2, epsR: e });
   bump();
   return g;
 }

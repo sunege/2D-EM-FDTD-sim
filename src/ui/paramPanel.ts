@@ -2,6 +2,7 @@ import * as P from '../sim/particles';
 import * as Body from '../sim/chargedBody';
 import * as Cond from '../sim/conductors';
 import * as Diel from '../sim/dielectric';
+import * as History from '../sim/history';
 import { state as ui } from './controls';
 import { requestRender } from './render-request';
 import {
@@ -59,6 +60,8 @@ function rowSlider(
     onInput(v);
     requestRender();
   });
+  // Commit on release (one undo step per slider gesture, not per pixel).
+  input.addEventListener('change', () => { History.commit(); });
   row.append(lab, input, val);
   return row;
 }
@@ -72,6 +75,7 @@ function rowCheckbox(label: string, checked: boolean, onChange: (v: boolean) => 
   box.checked = checked;
   box.addEventListener('change', () => {
     onChange(box.checked);
+    History.commit();
     requestRender();
   });
   lab.append(box, document.createTextNode(' ' + label));
@@ -87,6 +91,7 @@ function rowButton(label: string, onClick: () => void): HTMLElement {
   btn.textContent = label;
   btn.addEventListener('click', () => {
     onClick();
+    History.commit();
     requestRender();
   });
   row.append(btn);
@@ -107,10 +112,7 @@ function rowInfo(label: string, text: string): HTMLElement {
 // --- Common: oscillator fields (particle and body share the same shape) ----
 
 function angleDegFromDir(dirX: number, dirY: number): number {
-  let d = Math.atan2(dirY, dirX) * 180 / Math.PI;
-  if (d < 0) d += 180;
-  if (d >= 180) d -= 180;
-  return d;
+  return Math.atan2(dirY, dirX) * 180 / Math.PI;
 }
 
 interface OscAdapter {
@@ -139,7 +141,7 @@ function appendOscFields(parent: HTMLElement, osc: OscAdapter): void {
   parent.appendChild(rowSlider('A', 0.5, 20, 0.5, osc.getAmp(),
     (v) => osc.update(osc.getOmega(), v, osc.getAngleDeg() * Math.PI / 180),
     (v) => v.toFixed(1)));
-  parent.appendChild(rowSlider('θ', 0, 180, 5, osc.getAngleDeg(),
+  parent.appendChild(rowSlider('θ', -180, 180, 5, osc.getAngleDeg(),
     (v) => osc.update(osc.getOmega(), osc.getAmp(), v * Math.PI / 180),
     (v) => `${v.toFixed(0)}°`));
 }

@@ -58,5 +58,5 @@ export const SIGMA_CONDUCTOR_MIN = 0.05;
 export const SIGMA_CONDUCTOR_MAX = 5.0;
 
 export const EPS_R_MIN = 1.0;
-export const EPS_R_MAX = 4.0;
+export const EPS_R_MAX = 20.0;
 export const EPS_R_DEFAULT = 2.5;

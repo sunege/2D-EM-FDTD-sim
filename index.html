@@ -79,6 +79,17 @@
         cursor: not-allowed;
       }
       input[type="range"] { width: 110px; }
+      select {
+        background: #2a2a3a;
+        color: #e6e6f0;
+        border: 1px solid #3a3a4a;
+        padding: 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+        font-family: inherit;
+      }
+      select:hover { background: #3a3a4a; }
       label { user-select: none; }
       #main {
         display: flex;
@@ -309,6 +320,13 @@
         <button id="phi3dBtn">電位 3D</button>
         <button id="phi3dResetBtn" style="display:none">3Dビューリセット</button>
         <button id="view2dResetBtn">2Dビューリセット</button>
+      </div>
+      <div class="sep"></div>
+      <div class="group">
+        <select id="presetSelect"></select>
+        <button id="saveBtn">保存</button>
+        <button id="loadBtn">読込</button>
+        <input type="file" id="loadFile" accept="application/json,.json" style="display:none" />
       </div>
     </div>
     <div id="main">

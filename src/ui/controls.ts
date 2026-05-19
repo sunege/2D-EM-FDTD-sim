@@ -2,6 +2,42 @@ import * as Highpass from '../render/highpass';
 import * as Cond from '../sim/conductors';
 import { SIGMA_CONDUCTOR_DEFAULT, EPS_R_DEFAULT } from '../config';
 
+// Module-level handles so external callers (e.g. scene loader) can push
+// state→DOM after mutating ui.state directly.
+let showStaticEl: HTMLInputElement | null = null;
+let showWaveEl: HTMLInputElement | null = null;
+let highpassEl: HTMLInputElement | null = null;
+let showEquipotEl: HTMLInputElement | null = null;
+let modeBtnsRef: Record<Mode, HTMLButtonElement> | null = null;
+let shapeBtnsRef: Record<Shape, HTMLButtonElement> | null = null;
+
+export function applyUIToggles(): void {
+  if (showStaticEl) showStaticEl.checked = state.showStatic;
+  if (showWaveEl) showWaveEl.checked = state.showWave;
+  if (highpassEl) {
+    highpassEl.checked = state.highpass;
+    Highpass.setEnabled(state.highpass);
+  }
+  if (showEquipotEl) showEquipotEl.checked = state.showEquipot;
+}
+
+// Update ui.state.mode and reflect it in the toolbar buttons. Exported so
+// scene loading can switch to a safe default after replacing the scene.
+export function setMode(m: Mode): void {
+  state.mode = m;
+  if (modeBtnsRef) {
+    (Object.keys(modeBtnsRef) as Mode[]).forEach((k) => {
+      modeBtnsRef![k].classList.toggle('active', k === m);
+    });
+  }
+  if (shapeBtnsRef) {
+    const shapeNeeded = m === 'conductor' || m === 'dielectric' || m === 'body';
+    (Object.keys(shapeBtnsRef) as Shape[]).forEach((k) => {
+      shapeBtnsRef![k].disabled = !shapeNeeded;
+    });
+  }
+}
+
 export type Mode = 'charge' | 'body' | 'conductor' | 'dielectric' | 'probe' | 'erase';
 export type Shape = 'rect' | 'disk' | 'annulus';
 
@@ -29,9 +65,12 @@ export function setup(onReset: ResetHandler): void {
   const chargeVal = document.getElementById('chargeVal') as HTMLSpanElement;
   const pauseBtn = document.getElementById('pause') as HTMLButtonElement;
   const resetBtn = document.getElementById('reset') as HTMLButtonElement;
-  const showStaticEl = document.getElementById('showStatic') as HTMLInputElement;
-  const showWaveEl = document.getElementById('showWave') as HTMLInputElement;
-  const highpassEl = document.getElementById('highpass') as HTMLInputElement;
+  const showStatic = document.getElementById('showStatic') as HTMLInputElement;
+  const showWave = document.getElementById('showWave') as HTMLInputElement;
+  const highpass = document.getElementById('highpass') as HTMLInputElement;
+  showStaticEl = showStatic;
+  showWaveEl = showWave;
+  highpassEl = highpass;
   const speedEl = document.getElementById('speed') as HTMLInputElement;
   const speedVal = document.getElementById('speedVal') as HTMLSpanElement;
 
@@ -65,17 +104,17 @@ export function setup(onReset: ResetHandler): void {
     onReset();
   });
 
-  showStaticEl.addEventListener('change', () => {
-    state.showStatic = showStaticEl.checked;
+  showStatic.addEventListener('change', () => {
+    state.showStatic = showStatic.checked;
   });
-  showWaveEl.addEventListener('change', () => {
-    state.showWave = showWaveEl.checked;
+  showWave.addEventListener('change', () => {
+    state.showWave = showWave.checked;
   });
 
-  state.highpass = highpassEl.checked;
+  state.highpass = highpass.checked;
   Highpass.setEnabled(state.highpass);
-  highpassEl.addEventListener('change', () => {
-    state.highpass = highpassEl.checked;
+  highpass.addEventListener('change', () => {
+    state.highpass = highpass.checked;
     Highpass.setEnabled(state.highpass);
   });
 
@@ -89,7 +128,7 @@ export function setup(onReset: ResetHandler): void {
     updateSpeedLabel();
   });
 
-  const modeBtns: Record<Mode, HTMLButtonElement> = {
+  modeBtnsRef = {
     charge: document.getElementById('modeCharge') as HTMLButtonElement,
     body: document.getElementById('modeBody') as HTMLButtonElement,
     conductor: document.getElementById('modeConductor') as HTMLButtonElement,
@@ -97,30 +136,17 @@ export function setup(onReset: ResetHandler): void {
     probe: document.getElementById('modeProbe') as HTMLButtonElement,
     erase: document.getElementById('modeErase') as HTMLButtonElement,
   };
-  const shapeBtns: Record<Shape, HTMLButtonElement> = {
+  shapeBtnsRef = {
     rect: document.getElementById('shapeRect') as HTMLButtonElement,
     disk: document.getElementById('shapeDisk') as HTMLButtonElement,
     annulus: document.getElementById('shapeAnnulus') as HTMLButtonElement,
   };
+  const modeBtns = modeBtnsRef;
+  const shapeBtns = shapeBtnsRef;
 
-  const showEquipotEl = document.getElementById('showEquipot') as HTMLInputElement;
+  const showEquipot = document.getElementById('showEquipot') as HTMLInputElement;
+  showEquipotEl = showEquipot;
 
-  const refreshModeAffordances = (): void => {
-    // Shape sub-mode is meaningful when placing a material or a charged body.
-    const shapeNeeded =
-      state.mode === 'conductor' || state.mode === 'dielectric' || state.mode === 'body';
-    (Object.keys(shapeBtns) as Shape[]).forEach((k) => {
-      shapeBtns[k].disabled = !shapeNeeded;
-    });
-  };
-
-  const setMode = (m: Mode): void => {
-    state.mode = m;
-    (Object.keys(modeBtns) as Mode[]).forEach((k) => {
-      modeBtns[k].classList.toggle('active', k === m);
-    });
-    refreshModeAffordances();
-  };
   (Object.keys(modeBtns) as Mode[]).forEach((m) => {
     modeBtns[m].addEventListener('click', () => setMode(m));
   });
@@ -138,10 +164,10 @@ export function setup(onReset: ResetHandler): void {
   Cond.setSigma(state.sigma);
 
   // Equipotential toggle
-  state.showEquipot = showEquipotEl.checked;
-  showEquipotEl.addEventListener('change', () => {
-    state.showEquipot = showEquipotEl.checked;
+  state.showEquipot = showEquipot.checked;
+  showEquipot.addEventListener('change', () => {
+    state.showEquipot = showEquipot.checked;
   });
 
-  refreshModeAffordances();
+  setMode(state.mode);
 }

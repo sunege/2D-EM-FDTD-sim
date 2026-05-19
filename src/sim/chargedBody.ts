@@ -199,6 +199,12 @@ export function isInUse(g: number): boolean {
   return g > 0 && g < MAX_GROUPS && inUse[g] === 1;
 }
 
+export function getActiveGroupIds(): number[] {
+  const out: number[] = [];
+  for (let g = 1; g < MAX_GROUPS; g++) if (inUse[g]) out.push(g);
+  return out;
+}
+
 export function startDrag(g: number, tx: number, ty: number): void {
   if (!isInUse(g) || omegaArr[g] > 0) return; // oscillating bodies are pinned
   drag.groupId = g;
