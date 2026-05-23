@@ -18,9 +18,10 @@ import * as DielectricR from './render/dielectric';
 import * as BodyR from './render/chargedBody';
 import * as Equipot from './render/equipotential';
 import * as ProbeR from './render/probeChart';
+import * as PolyPreview from './render/polyPreview';
 import * as Viewport from './render/viewport';
 
-import { setup as setupInput } from './ui/input';
+import { setup as setupInput, polyUndo, polyRedo, polyTryClose, polyCancel, isPolyActive } from './ui/input';
 import { setup as setupControls, state as ui, applyUIToggles, setMode } from './ui/controls';
 import { requestRender, consumeRender } from './ui/render-request';
 import * as Panel from './ui/paramPanel';
@@ -131,15 +132,31 @@ loadFile.addEventListener('change', () => {
 
 setupPresets(loadScene);
 
-// Undo/redo. Bound after setupControls so its own keyboard handler (Space/R)
-// runs first; we only intercept Ctrl/Cmd-modified combos which it ignores.
+// Undo/redo + polygon-draw keys. Bound after setupControls so its own keyboard
+// handler (Space/R) runs first; we only intercept Ctrl/Cmd-modified combos
+// (which it ignores) and Enter/Esc.
 document.addEventListener('keydown', (e) => {
   if ((e.target as Element).tagName === 'INPUT') return;
+
+  // Polygon draw: Enter closes, Esc cancels. These keys are unused elsewhere.
+  if (isPolyActive()) {
+    if (e.code === 'Enter') { e.preventDefault(); polyTryClose(); requestRender(); return; }
+    if (e.code === 'Escape') { e.preventDefault(); polyCancel(); requestRender(); return; }
+  }
+
   if (!(e.ctrlKey || e.metaKey)) return;
   const isUndo = e.code === 'KeyZ' && !e.shiftKey;
   const isRedo = e.code === 'KeyY' || (e.code === 'KeyZ' && e.shiftKey);
   if (!isUndo && !isRedo) return;
   e.preventDefault();
+
+  // While a polygon is in progress, Ctrl/Cmd-Z/Y operate on vertex placement,
+  // not the scene-level history (which would yank the whole undo state).
+  if (isPolyActive()) {
+    if (isUndo ? polyUndo() : polyRedo()) requestRender();
+    return;
+  }
+
   const ok = isUndo ? History.undo(reset) : History.redo(reset);
   if (!ok) return;
   applyUIToggles();
@@ -179,8 +196,10 @@ window.addEventListener('resize', () => {
       resizeCanvas(); // also calls updateCSSSize internally
     } else {
       updateCSSSize();
-      if (phi3dVisible) Phi3D.resize();
     }
+    // Sync the 3D canvas to the same dims regardless of which branch ran —
+    // PIXEL_SCALE changes affect both, and CSS-only changes affect both too.
+    if (phi3dVisible) Phi3D.resize();
     requestRender();
   }, 100);
 });
@@ -234,6 +253,7 @@ function frame(): void {
     ProbeR.drawChart();
     ConductorsR.drawPreview();
     BodyR.drawPreview();
+    PolyPreview.draw();
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }

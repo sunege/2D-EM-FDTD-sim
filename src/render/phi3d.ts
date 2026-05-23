@@ -34,8 +34,9 @@ function init(canvas: HTMLCanvasElement): void {
   const halfFovRad = (FOV / 2) * (Math.PI / 180);
   const halfH = (NY - 1) / 2;
   const halfW = (NX - 1) / 2;
-  // z distance so the mesh fills the frame, with 5% padding
-  const zFit = Math.max(halfH, halfW / aspect) / Math.tan(halfFovRad) * 1.05;
+  // z distance so the mesh exactly fills the canvas (no extra padding) — the
+  // 3D content footprint should match what the 2D canvas shows.
+  const zFit = Math.max(halfH, halfW / aspect) / Math.tan(halfFovRad);
 
   camera = new THREE.PerspectiveCamera(FOV, aspect, 0.1, 10000);
   camera.up.set(0, 1, 0);
@@ -139,10 +140,9 @@ function loop(): void {
 export function show(canvas: HTMLCanvasElement): void {
   canvas.style.display = 'block'; // show before init so getBoundingClientRect() returns real size
   if (!renderer) init(canvas);
-  controls.handleResize(); // refresh cached screen dimensions
-  const { w, h } = getCSSSize();
-  canvas.style.width = w + 'px';
-  canvas.style.height = h + 'px';
+  // Always sync dims to the current 2D canvas — CANVAS_W/H or the CSS scale
+  // may have changed via a window resize while we were hidden.
+  resize();
   if (!rafId) loop();
 }
 

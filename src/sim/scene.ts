@@ -30,7 +30,8 @@ export interface ParticleJSON {
 type BodyShape =
   | { kind: 'disk'; cx: number; cy: number; r: number }
   | { kind: 'annulus'; cx: number; cy: number; rOuter: number; rInner: number }
-  | { kind: 'rect'; cx: number; cy: number; halfW: number; halfH: number };
+  | { kind: 'rect'; cx: number; cy: number; halfW: number; halfH: number }
+  | { kind: 'polygon'; cx: number; cy: number; points: number[] };
 
 export interface BodyJSON {
   shape: BodyShape;
@@ -104,6 +105,17 @@ function serializeBody(g: number): BodyJSON {
     shape = { kind: 'disk', cx, cy, r: Body.getParam1(g) };
   } else if (s === Body.SHAPE_ANNULUS) {
     shape = { kind: 'annulus', cx, cy, rOuter: Body.getParam1(g), rInner: Body.getParam2(g) };
+  } else if (s === Body.SHAPE_POLYGON) {
+    const rel = Body.getPolygonPoints(g);
+    // Re-anchor polygon points around the serialized (cx, cy) so reload places
+    // them in the same on-grid location regardless of phase.
+    const pts: number[] = [];
+    if (rel) {
+      for (let k = 0; k < rel.length; k += 2) {
+        pts.push(rel[k] + cx, rel[k + 1] + cy);
+      }
+    }
+    shape = { kind: 'polygon', cx, cy, points: pts };
   } else {
     shape = { kind: 'rect', cx, cy, halfW: Body.getParam1(g), halfH: Body.getParam2(g) };
   }
@@ -183,6 +195,7 @@ export function deserialize(scene: SceneJSON, reset: () => void): { warnings: st
     for (const s of c.shapes) {
       if (s.kind === 'disk') g = Cond.addDisk(s.cx, s.cy, s.r);
       else if (s.kind === 'annulus') g = Cond.addAnnulus(s.cx, s.cy, s.rOuter, s.rInner);
+      else if (s.kind === 'polygon') g = Cond.addPolygon(s.points);
       else g = Cond.addRect(s.x0, s.y0, s.x1, s.y1);
     }
     if (g > 0) {
@@ -196,6 +209,7 @@ export function deserialize(scene: SceneJSON, reset: () => void): { warnings: st
     for (const s of d.shapes) {
       if (s.kind === 'disk') Diel.addDisk(s.cx, s.cy, s.r, s.epsR);
       else if (s.kind === 'annulus') Diel.addAnnulus(s.cx, s.cy, s.rOuter, s.rInner, s.epsR);
+      else if (s.kind === 'polygon') Diel.addPolygon(s.points, s.epsR);
       else Diel.addRect(s.x0, s.y0, s.x1, s.y1, s.epsR);
     }
   }
@@ -205,6 +219,7 @@ export function deserialize(scene: SceneJSON, reset: () => void): { warnings: st
     const s = b.shape;
     if (s.kind === 'disk') g = Body.addDisk(s.cx, s.cy, s.r, b.Q);
     else if (s.kind === 'annulus') g = Body.addAnnulus(s.cx, s.cy, s.rOuter, s.rInner, b.Q);
+    else if (s.kind === 'polygon') g = Body.addPolygon(s.points, b.Q);
     else g = Body.addRect(s.cx - s.halfW, s.cy - s.halfH, s.cx + s.halfW, s.cy + s.halfH, b.Q);
     if (g > 0 && b.oscillator) {
       Body.setOscillator(g, b.oscillator.omega, b.oscillator.amp, deg2rad(b.oscillator.angleDeg));

@@ -1,12 +1,14 @@
 import { NX, NY, CANVAS_W, CANVAS_H, PIXEL_SCALE } from '../config';
 import {
   MAX_GROUPS, isInUse, getShape, getCx, getCy, getParam1, getParam2, getQ,
-  SHAPE_DISK, SHAPE_ANNULUS, SHAPE_RECT,
+  getPolygonPoints,
+  SHAPE_DISK, SHAPE_ANNULUS, SHAPE_RECT, SHAPE_POLYGON,
 } from '../sim/chargedBody';
 import { idx } from '../sim/grid';
 import { ctx } from './canvas';
 import { placement } from '../ui/input';
 import { getZoom } from './viewport';
+import { pointInPolygon } from '../sim/polygon';
 
 const overlay = document.createElement('canvas');
 overlay.width = NX;
@@ -45,12 +47,14 @@ export function draw(): void {
       i1 = Math.min(NX - 1, Math.ceil(cx + p1));
       j0 = Math.max(0, Math.floor(cy - p1));
       j1 = Math.min(NY - 1, Math.ceil(cy + p1));
-    } else if (s === SHAPE_RECT) {
+    } else if (s === SHAPE_RECT || s === SHAPE_POLYGON) {
       i0 = Math.max(0, Math.floor(cx - p1));
       i1 = Math.min(NX - 1, Math.ceil(cx + p1));
       j0 = Math.max(0, Math.floor(cy - p2));
       j1 = Math.min(NY - 1, Math.ceil(cy + p2));
     } else continue;
+
+    const poly = s === SHAPE_POLYGON ? getPolygonPoints(g) : null;
 
     // First pass: count cells (must match deposit's exclusion rule, but for
     // rendering we don't bother excluding conductor cells — the conductor
@@ -65,7 +69,8 @@ export function draw(): void {
         else if (s === SHAPE_ANNULUS) {
           const d2 = dx * dx + dy * dy;
           hit = d2 <= p1sq && d2 >= p2sq;
-        } else hit = Math.abs(dx) <= p1 && Math.abs(dy) <= p2;
+        } else if (s === SHAPE_POLYGON) hit = poly !== null && pointInPolygon(poly, dx, dy);
+        else hit = Math.abs(dx) <= p1 && Math.abs(dy) <= p2;
         if (hit) count++;
       }
     }
@@ -87,7 +92,8 @@ export function draw(): void {
         else if (s === SHAPE_ANNULUS) {
           const d2 = dx * dx + dy * dy;
           hit = d2 <= p1sq && d2 >= p2sq;
-        } else hit = Math.abs(dx) <= p1 && Math.abs(dy) <= p2;
+        } else if (s === SHAPE_POLYGON) hit = poly !== null && pointInPolygon(poly, dx, dy);
+        else hit = Math.abs(dx) <= p1 && Math.abs(dy) <= p2;
         if (!hit) continue;
         const p = idx(i, j) * 4;
         data[p] = r;

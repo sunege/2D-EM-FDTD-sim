@@ -11,6 +11,17 @@ let showEquipotEl: HTMLInputElement | null = null;
 let modeBtnsRef: Record<Mode, HTMLButtonElement> | null = null;
 let shapeBtnsRef: Record<Shape, HTMLButtonElement> | null = null;
 
+// Subscribers notified when mode or shape changes. Used by input.ts to cancel
+// an in-progress polygon draw when the user switches tools.
+type ChangeHandler = () => void;
+const modeOrShapeListeners: ChangeHandler[] = [];
+export function onModeOrShapeChange(fn: ChangeHandler): void {
+  modeOrShapeListeners.push(fn);
+}
+function notifyModeOrShapeChange(): void {
+  for (const fn of modeOrShapeListeners) fn();
+}
+
 export function applyUIToggles(): void {
   if (showStaticEl) showStaticEl.checked = state.showStatic;
   if (showWaveEl) showWaveEl.checked = state.showWave;
@@ -24,6 +35,7 @@ export function applyUIToggles(): void {
 // Update ui.state.mode and reflect it in the toolbar buttons. Exported so
 // scene loading can switch to a safe default after replacing the scene.
 export function setMode(m: Mode): void {
+  const changed = state.mode !== m;
   state.mode = m;
   if (modeBtnsRef) {
     (Object.keys(modeBtnsRef) as Mode[]).forEach((k) => {
@@ -36,10 +48,11 @@ export function setMode(m: Mode): void {
       shapeBtnsRef![k].disabled = !shapeNeeded;
     });
   }
+  if (changed) notifyModeOrShapeChange();
 }
 
 export type Mode = 'charge' | 'body' | 'conductor' | 'dielectric' | 'probe' | 'erase';
-export type Shape = 'rect' | 'disk' | 'annulus';
+export type Shape = 'rect' | 'disk' | 'annulus' | 'polygon';
 
 export const state = {
   charge: 5,
@@ -140,6 +153,7 @@ export function setup(onReset: ResetHandler): void {
     rect: document.getElementById('shapeRect') as HTMLButtonElement,
     disk: document.getElementById('shapeDisk') as HTMLButtonElement,
     annulus: document.getElementById('shapeAnnulus') as HTMLButtonElement,
+    polygon: document.getElementById('shapePolygon') as HTMLButtonElement,
   };
   const modeBtns = modeBtnsRef;
   const shapeBtns = shapeBtnsRef;
@@ -152,10 +166,12 @@ export function setup(onReset: ResetHandler): void {
   });
 
   const setShape = (s: Shape): void => {
+    const changed = state.shape !== s;
     state.shape = s;
     (Object.keys(shapeBtns) as Shape[]).forEach((k) => {
       shapeBtns[k].classList.toggle('active', k === s);
     });
+    if (changed) notifyModeOrShapeChange();
   };
   (Object.keys(shapeBtns) as Shape[]).forEach((s) => {
     shapeBtns[s].addEventListener('click', () => setShape(s));

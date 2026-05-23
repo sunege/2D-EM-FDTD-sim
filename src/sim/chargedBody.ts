@@ -2,6 +2,7 @@ import { NX, NY, DT, VMAX, K_DRAG, K_DAMP } from '../config';
 import { idx } from './grid';
 import { rho, Jx, Jy } from './deposition';
 import { mask as condMask } from './conductors';
+import { pointInPolygon, polygonBBox } from './polygon';
 
 // "Charged bodies" are shape-placed, finite-extent charge distributions that
 // can be dragged like particles. Their total charge Q is fixed at creation;
@@ -19,7 +20,7 @@ import { mask as condMask } from './conductors';
 
 export const MAX_GROUPS = 64;
 
-const enum Shape { None = 0, Disk = 1, Annulus = 2, Rect = 3 }
+const enum Shape { None = 0, Disk = 1, Annulus = 2, Rect = 3, Polygon = 4 }
 
 const inUse = new Uint8Array(MAX_GROUPS);
 const shape = new Uint8Array(MAX_GROUPS);
@@ -32,6 +33,12 @@ const cyArr = new Float32Array(MAX_GROUPS);
 const vxArr = new Float32Array(MAX_GROUPS);
 const vyArr = new Float32Array(MAX_GROUPS);
 const qArr = new Float32Array(MAX_GROUPS);
+
+// Polygon-shape bodies: centroid-relative flat points [x0,y0,x1,y1,...].
+// null for non-polygon groups. Stored relative to (cxArr, cyArr) so translation
+// is just changing the center; rasterization re-evaluates point-in-polygon
+// each frame.
+const polyPointsArr: Array<Float32Array | null> = new Array(MAX_GROUPS).fill(null);
 
 // Oscillator state. omega == 0 → non-oscillating (drag-driven).
 const omegaArr = new Float32Array(MAX_GROUPS);
@@ -71,6 +78,7 @@ export function clear(): void {
   phaseArr.fill(0);
   eqXArr.fill(0);
   eqYArr.fill(0);
+  for (let g = 0; g < MAX_GROUPS; g++) polyPointsArr[g] = null;
   drag.groupId = 0;
 }
 
@@ -83,6 +91,7 @@ export function removeGroup(g: number): void {
   vyArr[g] = 0;
   omegaArr[g] = 0;
   ampArr[g] = 0;
+  polyPointsArr[g] = null;
   if (drag.groupId === g) drag.groupId = 0;
 }
 
@@ -169,6 +178,34 @@ export function addRect(x1: number, y1: number, x2: number, y2: number, totalQ: 
   return g;
 }
 
+export function addPolygon(points: number[], totalQ: number): number {
+  if (points.length < 6) return 0;
+  // Bbox center as the body's translation anchor — keeps the on-grid clamp
+  // simple (matches the rect convention of cx = (x1+x2)/2).
+  const bb = polygonBBox(points, Infinity, Infinity);
+  const cx = (bb.i0 + bb.i1) * 0.5;
+  const cy = (bb.j0 + bb.j1) * 0.5;
+  const halfW = (bb.i1 - bb.i0) * 0.5;
+  const halfH = (bb.j1 - bb.j0) * 0.5;
+  const rel = new Float32Array(points.length);
+  for (let k = 0; k < points.length; k += 2) {
+    rel[k]     = points[k]     - cx;
+    rel[k + 1] = points[k + 1] - cy;
+  }
+  const g = allocGroup();
+  if (g === 0) return 0;
+  shape[g] = Shape.Polygon;
+  param1[g] = halfW;
+  param2[g] = halfH;
+  cxArr[g] = cx;
+  cyArr[g] = cy;
+  vxArr[g] = 0;
+  vyArr[g] = 0;
+  qArr[g] = totalQ;
+  polyPointsArr[g] = rel;
+  return g;
+}
+
 
 function pointInside(g: number, x: number, y: number): boolean {
   const dx = x - cxArr[g], dy = y - cyArr[g];
@@ -182,6 +219,13 @@ function pointInside(g: number, x: number, y: number): boolean {
     }
     case Shape.Rect:
       return Math.abs(dx) <= param1[g] && Math.abs(dy) <= param2[g];
+    case Shape.Polygon: {
+      const pts = polyPointsArr[g];
+      if (!pts) return false;
+      // Quick bbox reject via stored half-extents.
+      if (Math.abs(dx) > param1[g] || Math.abs(dy) > param2[g]) return false;
+      return pointInPolygon(pts, dx, dy);
+    }
     default:
       return false;
   }
@@ -275,8 +319,9 @@ export function step(): void {
     // Keep the bounding box of the body on-grid (with 1-cell padding so the
     // boundary cells stay free for Mur ABC). Use per-axis extents so a long
     // thin rect isn't over-clamped by the other axis's half-length.
-    const extX = param1[g] + 1;  // halfW for rect, radius for disk/annulus
-    const extY = (shape[g] === Shape.Rect ? param2[g] : param1[g]) + 1;
+    const extX = param1[g] + 1;  // halfW for rect/polygon, radius for disk/annulus
+    const hasParam2 = shape[g] === Shape.Rect || shape[g] === Shape.Polygon;
+    const extY = (hasParam2 ? param2[g] : param1[g]) + 1;
     const loX = extX, hiX = NX - 1 - extX;
     const loY = extY, hiY = NY - 1 - extY;
     if (cxArr[g] < loX) { cxArr[g] = loX; vxArr[g] = 0; }
@@ -301,7 +346,7 @@ export function deposit(): void {
       i1 = Math.min(NX - 1, Math.ceil(cx + r));
       j0 = Math.max(0, Math.floor(cy - r));
       j1 = Math.min(NY - 1, Math.ceil(cy + r));
-    } else if (s === Shape.Rect) {
+    } else if (s === Shape.Rect || s === Shape.Polygon) {
       const hw = param1[g], hh = param2[g];
       i0 = Math.max(0, Math.floor(cx - hw));
       i1 = Math.min(NX - 1, Math.ceil(cx + hw));
@@ -313,6 +358,7 @@ export function deposit(): void {
 
     const p1 = param1[g], p2 = param2[g];
     const p1sq = p1 * p1, p2sq = p2 * p2;
+    const poly = s === Shape.Polygon ? polyPointsArr[g] : null;
 
     // First pass: count cells that this body actually owns (excluding cells
     // inside a conductor — the conductor's Dirichlet boundary absorbs the
@@ -327,7 +373,8 @@ export function deposit(): void {
         else if (s === Shape.Annulus) {
           const d2 = dx * dx + dy * dy;
           hit = d2 <= p1sq && d2 >= p2sq;
-        } else hit = Math.abs(dx) <= p1 && Math.abs(dy) <= p2;
+        } else if (s === Shape.Polygon) hit = poly !== null && pointInPolygon(poly, dx, dy);
+        else hit = Math.abs(dx) <= p1 && Math.abs(dy) <= p2;
         if (hit && !condMask[idx(i, j)]) count++;
       }
     }
@@ -346,7 +393,8 @@ export function deposit(): void {
         else if (s === Shape.Annulus) {
           const d2 = dx * dx + dy * dy;
           hit = d2 <= p1sq && d2 >= p2sq;
-        } else hit = Math.abs(dx) <= p1 && Math.abs(dy) <= p2;
+        } else if (s === Shape.Polygon) hit = poly !== null && pointInPolygon(poly, dx, dy);
+        else hit = Math.abs(dx) <= p1 && Math.abs(dy) <= p2;
         if (!hit) continue;
         const k = idx(i, j);
         if (condMask[k]) continue;
@@ -371,6 +419,10 @@ export function getDirX(g: number): number { return dirXArr[g]; }
 export function getDirY(g: number): number { return dirYArr[g]; }
 export function getEqX(g: number): number { return eqXArr[g]; }
 export function getEqY(g: number): number { return eqYArr[g]; }
+export function getPolygonPoints(g: number): Float32Array | null {
+  return polyPointsArr[g];
+}
 export const SHAPE_DISK = Shape.Disk;
 export const SHAPE_ANNULUS = Shape.Annulus;
 export const SHAPE_RECT = Shape.Rect;
+export const SHAPE_POLYGON = Shape.Polygon;

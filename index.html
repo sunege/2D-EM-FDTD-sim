@@ -310,6 +310,7 @@
         <button id="shapeRect" class="active">矩形</button>
         <button id="shapeDisk">円</button>
         <button id="shapeAnnulus">ドーナツ</button>
+        <button id="shapePolygon">多角形</button>
       </div>
       <div class="sep"></div>
       <div class="group">
@@ -335,8 +336,9 @@
         <canvas id="phi-canvas"></canvas>
       </div>
       <p class="hint">
-        既存への操作はモード非依存: 電荷/帯電体クリック→ドラッグ移動 / 導体クリック→接地↔浮遊切替 / 右クリック→パラメータパネル / プローブクリック→グラフ表示切替・右クリック→削除。
+        既存への操作はモード非依存: 電荷/帯電体クリック→ドラッグ移動 / 導体・誘電体クリック→ドラッグでグループ移動・短クリックで導体は接地↔浮遊切替 / 右クリック→パラメータパネル / プローブクリック→グラフ表示切替・右クリック→削除。
         空白部はモードで配置: 電荷=クリック / 帯電体・導体・誘電体=形状（矩形/円/ドーナツ）をドラッグでサイズ指定 / プローブ=クリックで配置 / 削除=クリックで対象を消去。
+        多角形: クリックで頂点追加 / Enter or 始点付近クリックで閉じる / Esc で取消 / Ctrl(⌘)+Z,Y で頂点 undo/redo。
         電荷・帯電体は振動 ON で正弦振動（ダイポール放射、振動体は固定）。
         Space: 一時停止 / R: 全リセット
       </p>
